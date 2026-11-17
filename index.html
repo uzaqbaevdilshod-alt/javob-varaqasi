@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2f5bea">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Javob varaqasi">
+<title>Javob varaqasi — skanerlab tekshirish</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#1c2230;--mut:#667085;--line:#e3e6eb;--acc:#2f5bea;--accs:#eef2ff;--ok:#12a150;--okb:#e7f7ee;--bad:#d92d20;--badb:#fdecea;--emp:#98a2b3;--empb:#f2f4f7;--warn:#b54708;--warnb:#fff4e5}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;padding-top:env(safe-area-inset-top)}
+.testbar{display:flex;gap:6px;align-items:center;padding:0 0 10px;flex-wrap:wrap}
+.testbar select{flex:1;min-width:180px;max-width:420px}
+#instBar{display:none;background:#fff8e1;border-bottom:1px solid #f3e0a6;font-size:14px;padding:8px 0}
+body{padding-bottom:env(safe-area-inset-bottom)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+.top{display:flex;align-items:center;gap:18px;padding:10px 0;flex-wrap:wrap}
+h1{font-size:17px;margin:0;white-space:nowrap}
+h2{font-size:16px;margin:0 0 12px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{border:0;background:none;padding:8px 12px;border-radius:8px;font:inherit;color:var(--mut);cursor:pointer}
+nav button.on{background:var(--accs);color:var(--acc);font-weight:600}
+nav .n{display:inline-block;min-width:18px;height:18px;border-radius:9px;background:var(--acc);color:#fff;font-size:11px;line-height:18px;text-align:center;margin-left:4px;padding:0 5px}
+main{padding:18px 0 60px}
+.tab{display:none}.tab.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mut)}
+input[type=number],input[type=text],select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);min-width:0}
+input[type=number]{width:96px}
+.btn{font:inherit;border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 14px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:#c7ccd4}
+.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.p:hover{filter:brightness(1.07)}
+.btn.s{padding:5px 10px;font-size:13px}
+.mut{color:var(--mut)}.small{font-size:13px}
+.hint{background:var(--accs);border-radius:10px;padding:10px 14px;font-size:14px;color:#2b3a67}
+.warnbox{background:var(--warnb);color:var(--warn);border-radius:10px;padding:10px 14px;font-size:14px}
+.preview{background:#e9ebef;border-radius:10px;padding:16px;display:flex;justify-content:center;overflow:auto}
+.preview svg{width:100%;max-width:560px;height:auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+/* key */
+.keygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 18px;margin-top:12px}
+.kq{display:flex;align-items:center;gap:6px}
+.kq b{width:28px;text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
+.kb{width:30px;height:30px;border-radius:50%;border:1.5px solid #9aa3b2;background:#fff;font:600 13px system-ui;color:#7a8394;cursor:pointer;padding:0}
+.kb.on{background:var(--ink);border-color:var(--ink);color:#fff}
+/* drop */
+.drop{border:2px dashed #c3c9d4;border-radius:12px;padding:28px;text-align:center;background:#fafbfc;transition:.15s}
+.drop.over{border-color:var(--acc);background:var(--accs)}
+.drop .big{font-size:16px;font-weight:600;margin-bottom:6px}
+/* results */
+.blanks{display:grid;grid-template-columns:repeat(auto-fill,minmax(480px,1fr));gap:14px}
+@media(max-width:560px){.blanks{grid-template-columns:1fr}}
+.bk{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.bk canvas{width:100%;display:block;border-bottom:1px solid var(--line);cursor:zoom-in}
+.bk .bd{padding:10px 12px}
+.bk .hd{display:flex;gap:10px;align-items:center}
+.bk .hd input{flex:1}
+.score{font-weight:700;font-size:18px;white-space:nowrap}
+.score small{font-weight:500;color:var(--mut);font-size:13px}
+.ans{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.a{font:12px/1 system-ui;padding:5px 6px;border-radius:6px;cursor:pointer;user-select:none;border:1px solid transparent;font-variant-numeric:tabular-nums}
+.a.ok{background:var(--okb);color:var(--ok)}
+.a.bad{background:var(--badb);color:var(--bad)}
+.a.emp{background:var(--empb);color:var(--emp)}
+.a.mul{background:var(--warnb);color:var(--warn)}
+.a.ed{border-color:currentColor}
+.err{background:var(--badb);color:var(--bad);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:14px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--mut);font-weight:600;font-size:13px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.bar{height:6px;background:#eef0f3;border-radius:3px;overflow:hidden;width:90px;display:inline-block;vertical-align:middle;margin-left:8px}
+.bar i{display:block;height:100%;background:var(--acc)}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:130px}
+.stat b{display:block;font-size:20px}
+.stat span{font-size:12px;color:var(--mut)}
+.qstat{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+.qs{border-radius:8px;padding:6px;text-align:center;font-size:12px;border:1px solid var(--line)}
+.qs b{display:block;font-size:13px}
+#zoom{position:fixed;inset:0;background:rgba(10,14,22,.85);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;cursor:zoom-out}
+#zoom canvas{max-width:100%;max-height:100%;background:#fff;border-radius:6px}
+#busy{display:none;margin-top:12px}
+@media(max-width:640px){header{position:static}h1{font-size:15px}.top{gap:6px;padding:8px 0 4px}nav button{padding:6px 9px;font-size:14px}.testbar select{min-width:0;flex:1 1 60%}main{padding-top:12px}.card{padding:14px}.drop{padding:18px 12px}}
+#printArea{display:none}
+@media print{
+  @page{size:A4;margin:0}
+  body{background:#fff}
+  body>*:not(#printArea){display:none!important}
+  #printArea{display:block}
+  #printArea svg{width:210mm;height:297mm;display:block;page-break-after:always}
+}
+</style>
+<script src="jspdf.umd.min.js" defer></script>
+</head>
+<body>
+<header><div class="wrap top">
+  <h1>📝 Javob varaqasi tekshiruvchi</h1>
+  <nav id="nav">
+    <button data-t="t1" class="on">1. Blanka</button>
+    <button data-t="t2">2. Kalit</button>
+    <button data-t="t3">3. Tekshirish</button>
+    <button data-t="t4">4. Natijalar <span class="n" id="cnt">0</span></button>
+  </nav>
+</div>
+<div class="wrap testbar">
+  <span class="small mut">Test:</span>
+  <select id="tSel"></select>
+  <button class="btn s" id="tNew">➕ Yangi test</button>
+  <button class="btn s" id="tDel" title="Testni o‘chirish">🗑</button>
+  <button class="btn s p" id="bInstall" style="display:none">📲 Telefonga o‘rnatish</button>
+</div>
+<div id="instBar"><div class="wrap" id="instTxt"></div></div>
+</header>
+
+<main class="wrap">
+<!-- TAB 1 -->
+<section class="tab on" id="t1">
+  <div class="card">
+    <h2>Blanka sozlamalari</h2>
+    <div class="row">
+      <label class="f">Test nomi (ixtiyoriy)<input type="text" id="cTitle" placeholder="masalan: 7-sinf matematika" style="width:240px"></label>
+      <label class="f">Savollar soni (1–200)<input type="number" id="cN" min="1" max="200"></label>
+      <label class="f">Javob variantlari<select id="cK"><option value="3">A–C</option><option value="4">A–D</option><option value="5">A–E</option></select></label>
+      <label class="f">Blanka turi<select id="cMode"><option value="1">1 varaq = 1 o‘quvchi (ism faqat tepada)</option><option value="m">1 varaqda bir nechta blanka</option></select></label>
+      <label class="f" id="cPwrap">Bitta A4 da nechta blanka<select id="cP"><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+    </div>
+    <p id="cMsg" class="small mut" style="margin:10px 0 0"></p>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">A4 varaq ko‘rinishi</h2>
+      <div class="row">
+        <button class="btn p" id="bPdf">⬇ PDF (chop etish uchun)</button>
+        <button class="btn" id="bPng">⬇ PNG yuklab olish</button>
+        <button class="btn" id="bImg">🖼 Rasm sifatida ochish</button>
+      </div>
+    </div>
+    <div class="preview" id="prev"></div>
+    <p class="hint" style="margin-top:12px">PDF ni yuklab olib, A4 ga chop eting (masshtab: “haqiqiy o‘lcham” yoki “sahifaga moslash” — ikkalasi ham bo‘ladi) → punktir chiziq bo‘ylab qirqing → har bir o‘quvchiga bittadan blanka. Har bir blankaning <b>4 burchagidagi qora kvadratlar</b> skanerlash uchun kerak — ularni yopmang va qirqib yubormang. Chap yuqoridagi kichik kvadrat blankaning yo‘nalishini bildiradi.</p>
+  </div>
+</section>
+
+<!-- TAB 2 -->
+<section class="tab" id="t2">
+  <div class="card">
+    <h2>To‘g‘ri javoblar kaliti</h2>
+    <div class="row">
+      <label class="f" style="flex:1;min-width:260px">Tez kiritish (harflar ketma-ket, bo‘sh uchun “-”)<input type="text" id="kText" placeholder="ABCDA BCDAB ..." style="font-family:ui-monospace,monospace;letter-spacing:1px"></label>
+      <button class="btn s" id="kClear">Tozalash</button>
+    </div>
+    <p class="small mut" id="kInfo" style="margin:8px 0 0"></p>
+    <div class="keygrid" id="kGrid"></div>
+  </div>
+</section>
+
+<!-- TAB 3 -->
+<section class="tab" id="t3">
+  <div class="card">
+    <h2>Skaner yoki rasm yuklang</h2>
+    <div class="drop" id="drop">
+      <div class="big">Rasmlarni shu yerga tashlang</div>
+      <div class="mut small" style="margin-bottom:12px">Butun A4 varaq (bir nechta blanka) yoki qirqilgan alohida blankalar — ikkalasi ham bo‘ladi. Bir vaqtda ko‘p rasm tanlash mumkin.</div>
+      <div class="row" style="justify-content:center">
+        <label class="btn p">📁 Fayl tanlash<input type="file" id="fIn" accept="image/*" multiple hidden></label>
+        <label class="btn">📷 Kamera<input type="file" id="fCam" accept="image/*" capture="environment" hidden></label>
+        <button class="btn" id="bDemo" title="Sinov uchun to‘ldirilgan blanka rasmi yaratib tekshiradi">🧪 Sinov rasmi</button>
+      </div>
+      <div id="busy" class="mut small">⏳ Tahlil qilinmoqda…</div>
+    </div>
+    <div id="errs" style="margin-top:12px"></div>
+    <details style="margin-top:10px"><summary class="small mut" style="cursor:pointer">Sozlash va maslahatlar</summary>
+      <div class="row" style="margin-top:10px">
+        <label class="f">Bo‘yalganlik chegarasi: <b id="thrV"></b><input type="range" id="thr" min="0.2" max="0.8" step="0.05" style="width:220px"></label>
+      </div>
+      <ul class="small mut">
+        <li>Skaner yoki telefon bilan to‘g‘ridan-to‘g‘ri tepadan, yaxshi yorug‘likda suratga oling.</li>
+        <li>Varaq to‘liq kadrga sig‘sin, 4 burchak kvadrati ko‘rinib tursin; soya tushmasin.</li>
+        <li>Doirachani qora/ko‘k ruchka bilan to‘liq bo‘yash kerak. Agar yengil belgilar aniqlanmasa — chegarani pasaytiring.</li>
+        <li>Javobni qo‘lda tuzatish: natija kartasidagi savol raqamini bosing (A→B→…→bo‘sh).</li>
+      </ul>
+    </details>
+  </div>
+  <div class="blanks" id="blanks"></div>
+</section>
+
+<!-- TAB 4 -->
+<section class="tab" id="t4">
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">Natijalar</h2>
+      <div class="row">
+        <button class="btn" id="bCsv">⬇ CSV (Excel)</button>
+        <button class="btn" id="bCopy">📋 Nusxalash</button>
+        <button class="btn" id="bReset">🗑 Natijalarni o‘chirish</button>
+      </div>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div style="overflow:auto"><table id="rtab"></table></div>
+  </div>
+  <div class="card">
+    <h2>Savollar bo‘yicha tahlil <span class="small mut">(necha foiz o‘quvchi to‘g‘ri topgan)</span></h2>
+    <div class="qstat" id="qstat"></div>
+  </div>
+</section>
+</main>
+
+<div id="zoom"><canvas id="zc"></canvas></div>
+<div id="imgv" style="position:fixed;inset:0;background:rgba(10,14,22,.88);display:none;flex-direction:column;align-items:center;z-index:55;padding:14px;overflow:auto">
+  <div style="color:#fff;margin-bottom:10px;text-align:center;font-size:14px">Rasm ustida <b>o‘ng tugma → “Rasmni saqlash”</b> (telefonda: rasmni bosib turing → “Saqlash”). <button class="btn s" id="imgvX" style="margin-left:8px">Yopish ✕</button></div>
+  <img id="imgvI" style="max-width:min(100%,800px);background:#fff">
+</div>
+<div id="printArea"></div>
+
+<script id="core">
+/* ================= CORE: geometry + image analysis (no DOM) ================= */
+const LET = "ABCDE";
+const PAGE_W = 210, PAGE_H = 297;
+
+// Geometry of ONE blank (strip) in mm. Strip coords: x 0..210, y 0..H
+function stripLayout(N, K, perPage) {
+  const H = PAGE_H / perPage;
+  const MK = 7;                                   // marker size
+  const markers = [[9, 8.5], [201, 8.5], [201, H - 8.5], [9, H - 8.5]];
+  const orient = [18.5, 8.5], orientS = 3.5;
+  const r = 2.3, pitch = 6, numW = 8;
+  const single = perPage === 1;
+  const yTop = single ? 62 : 18.5, yBot = H - (single ? 12 : 7);
+  const avail = yBot - yTop;
+  const rowsMax = Math.max(1, Math.floor(avail / 5.3) + 1);
+  const blockW = numW + K * pitch;
+  const X0 = 14, X1 = perPage === 1 ? 196 : 163;
+  const maxCols = Math.max(1, Math.floor((X1 - X0) / (blockW + 2)));
+  const rowsCap = single ? Math.min(rowsMax, Math.max(25, Math.ceil(N / maxCols))) : rowsMax;
+  let cols = Math.ceil(N / rowsCap);
+  const fits = cols <= maxCols;
+  cols = Math.max(1, Math.min(cols, maxCols));
+  const rows = Math.ceil(N / cols);
+  const rowH = rows > 1 ? Math.min(single ? 8 : 7.5, avail / (rows - 1)) : 0;
+  const colPitch = (X1 - X0) / cols;
+  const q = [];
+  for (let i = 0; i < N; i++) {
+    const c = Math.floor(i / rows), rr = i % rows;
+    const bx = X0 + c * colPitch + (colPitch - blockW) / 2;
+    const y = yTop + rr * rowH;
+    q.push({ n: i + 1, nx: bx + numW - 1, y, b: Array.from({ length: K }, (_, j) => [bx + numW + j * pitch + pitch / 2, y]) });
+  }
+  return { H, W: PAGE_W, MK, markers, orient, orientS, r, q, rows, cols, fits, rowsMax, maxCols, capacity: rowsMax * maxCols, single };
+}
+
+function toGray(data, w, h) {
+  const g = new Uint8Array(w * h);
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = (data[j] * 77 + data[j + 1] * 150 + data[j + 2] * 29) >> 8;
+  return g;
+}
+
+function rotGray(g, w, h, rot) { // rot in {0,90,180,270} clockwise
+  if (!rot) return { g, w, h };
+  const out = new Uint8Array(w * h);
+  if (rot === 180) { for (let i = 0; i < g.length; i++) out[g.length - 1 - i] = g[i]; return { g: out, w, h }; }
+  const W = h, Hh = w;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let nx, ny;
+    if (rot === 90) { nx = h - 1 - y; ny = x; } else { nx = y; ny = w - 1 - x; }
+    out[ny * W + nx] = g[y * w + x];
+  }
+  return { g: out, w: W, h: Hh };
+}
+
+function binarize(g, w, h) {
+  const W = w + 1, I = new Float64Array(W * (h + 1));
+  for (let y = 0; y < h; y++) { let rs = 0; for (let x = 0; x < w; x++) { rs += g[y * w + x]; I[(y + 1) * W + x + 1] = I[y * W + x + 1] + rs; } }
+  const s = Math.max(8, Math.round(Math.max(Math.min(w, h) / 10, Math.max(w, h) / 25)));
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const y1 = Math.max(0, y - s), y2 = Math.min(h, y + s + 1);
+    for (let x = 0; x < w; x++) {
+      const x1 = Math.max(0, x - s), x2 = Math.min(w, x + s + 1);
+      const cnt = (x2 - x1) * (y2 - y1);
+      const sum = I[y2 * W + x2] - I[y1 * W + x2] - I[y2 * W + x1] + I[y1 * W + x1];
+      const v = g[y * w + x];
+      if (v * cnt < sum * 0.78 && v < 200) out[y * w + x] = 1;
+    }
+  }
+  return out;
+}
+
+function components(bin, w, h) {
+  const lab = new Int32Array(w * h), st = new Int32Array(w * h), out = [];
+  let id = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (!bin[i] || lab[i]) continue;
+    id++; let sp = 0; st[sp++] = i; lab[i] = id;
+    let a = 0, sx = 0, sy = 0, x0 = w, x1 = 0, y0 = h, y1 = 0;
+    while (sp) {
+      const p = st[--sp], x = p % w, y = (p - x) / w;
+      a++; sx += x; sy += y;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (x > 0 && bin[p - 1] && !lab[p - 1]) { lab[p - 1] = id; st[sp++] = p - 1; }
+      if (x < w - 1 && bin[p + 1] && !lab[p + 1]) { lab[p + 1] = id; st[sp++] = p + 1; }
+      if (y > 0 && bin[p - w] && !lab[p - w]) { lab[p - w] = id; st[sp++] = p - w; }
+      if (y < h - 1 && bin[p + w] && !lab[p + w]) { lab[p + w] = id; st[sp++] = p + w; }
+    }
+    if (a >= 25) out.push({ a, cx: sx / a, cy: sy / a, bw: x1 - x0 + 1, bh: y1 - y0 + 1, edge: x0 === 0 || y0 === 0 || x1 === w - 1 || y1 === h - 1 });
+  }
+  return out;
+}
+
+function markerCandidates(cs, w, h) {
+  const md = Math.max(w, h);
+  let c = cs.filter(o => !o.edge && o.bw >= md * 0.008 && o.bh >= md * 0.008 && o.bw <= md * 0.09 && o.bh <= md * 0.09 &&
+    o.bw / o.bh < 1.6 && o.bh / o.bw < 1.6 && o.a / (o.bw * o.bh) >= 0.62);
+  if (c.length < 4) return [];
+  c.sort((a, b) => b.a - a.a);
+  const top = c.slice(0, 4).map(o => o.a).sort((a, b) => a - b);
+  const ref = (top[1] + top[2]) / 2;
+  return c.filter(o => o.a >= ref * 0.5 && o.a <= ref * 2.2);
+}
+
+function solveH(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const [x, y] = src[i], [u, v] = dst[i];
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+  }
+  for (let c = 0; c < 8; c++) {
+    let p = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    [A[c], A[p]] = [A[p], A[c]]; [b[c], b[p]] = [b[p], b[c]];
+    const d = A[c][c]; if (Math.abs(d) < 1e-12) return null;
+    for (let r = 0; r < 8; r++) { if (r === c) continue; const f = A[r][c] / d; if (!f) continue; for (let k = c; k < 8; k++) A[r][k] -= f * A[c][k]; b[r] -= f * b[c]; }
+  }
+  return [...b.map((v, i) => v / A[i][i]), 1];
+}
+function mapH(H, x, y) { const w = H[6] * x + H[7] * y + 1; return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w]; }
+
+function fillAt(bin, w, h, H, x, y, r) {
+  let d = 0, t = 0;
+  for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) {
+    if (i * i + j * j > 9) continue;
+    const [u, v] = mapH(H, x + i * r / 3, y + j * r / 3);
+    const px = Math.round(u), py = Math.round(v); t++;
+    if (px >= 0 && py >= 0 && px < w && py < h && bin[py * w + px]) d++;
+  }
+  return d / t;
+}
+
+// Find all blanks in an upright image
+function findStrips(bin, w, h, cands, L) {
+  if (cands.length < 4) return [];
+  const xs = cands.map(c => c.cx), mid = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const left = cands.filter(c => c.cx < mid).sort((a, b) => a.cy - b.cy);
+  const right = cands.filter(c => c.cx >= mid).sort((a, b) => a.cy - b.cy);
+  if (left.length < 2 || right.length < 2) return [];
+  // pair left with right
+  let pairs = [];
+  if (left.length === right.length) pairs = left.map((l, i) => [l, right[i]]);
+  else {
+    const used = new Set();
+    for (const l of left) {
+      let best = -1, bd = 1e9;
+      right.forEach((r, j) => { if (used.has(j)) return; const d = Math.abs(r.cy - l.cy); if (d < bd) { bd = d; best = j; } });
+      if (best >= 0 && bd < Math.abs(right[best].cx - l.cx) * 0.25) { used.add(best); pairs.push([l, right[best]]); }
+    }
+    pairs.sort((a, b) => (a[0].cy + a[1].cy) - (b[0].cy + b[1].cy));
+  }
+  const src = L.markers;
+  const expRatio = (L.markers[3][1] - L.markers[0][1]) / (L.markers[1][0] - L.markers[0][0]);
+  const strips = [];
+  let i = 0;
+  while (i + 1 < pairs.length) {
+    const [tl, tr] = pairs[i], [bl, br] = pairs[i + 1];
+    const dst = [[tl.cx, tl.cy], [tr.cx, tr.cy], [br.cx, br.cy], [bl.cx, bl.cy]];
+    const wTop = Math.hypot(tr.cx - tl.cx, tr.cy - tl.cy), hL = Math.hypot(bl.cx - tl.cx, bl.cy - tl.cy);
+    const ratio = hL / wTop;
+    let ok = ratio > expRatio * 0.7 && ratio < expRatio * 1.4;
+    let H = null, of = 0, ofx = 1;
+    if (ok) {
+      H = solveH(src, dst);
+      if (H) {
+        of = fillAt(bin, w, h, H, L.orient[0], L.orient[1], 1.3);
+        ofx = fillAt(bin, w, h, H, L.W - L.orient[0], L.H - L.orient[1], 1.3); // mirror spot must be empty
+      }
+      // known empty margin spots must be white
+      const blank = H ? [[40, 3.2], [100, 3.2], [150, 3.2], [100, L.H - 2.5]].map(([x, y]) => fillAt(bin, w, h, H, x, y, 0.8)) : [1];
+      ok = !!H && of >= 0.45 && ofx < 0.35 && Math.max(...blank) < 0.35;
+    }
+    if (ok) { strips.push({ H, quad: dst }); i += 2; } else i += 1;
+  }
+  return strips;
+}
+
+function decide(fills, thr) {
+  let mx = -1, mi = -1;
+  fills.forEach((f, j) => { if (f > mx) { mx = f; mi = j; } });
+  if (mx < thr) return -1;
+  const strong = fills.filter(f => f >= thr && f >= mx * 0.7).length;
+  return strong > 1 ? -2 : mi;
+}
+
+// Analyze grayscale image; tries 4 rotations; returns {rot, w, h, strips:[{H, fills}]}
+function analyzeGray(g0, w0, h0, cfg) {
+  const L = stripLayout(cfg.N, cfg.K, cfg.P);
+  let best = null;
+  for (const rot of [0, 90, 270, 180]) {
+    const { g, w, h } = rotGray(g0, w0, h0, rot);
+    const bin = binarize(g, w, h);
+    const cands = markerCandidates(components(bin, w, h), w, h);
+    const strips = findStrips(bin, w, h, cands, L);
+    if (!best || strips.length > best.strips.length) best = { rot, w, h, g, bin, strips, nc: cands.length };
+    if (strips.length && strips.length * 4 >= cands.length - 1) break;
+  }
+  const rr = L.r * 0.55;
+  for (const s of best.strips) {
+    s.fills = L.q.map(q => q.b.map(([x, y]) => fillAt(best.bin, best.w, best.h, s.H, x, y, rr)));
+  }
+  return best;
+}
+
+if (typeof module !== "undefined") module.exports = { stripLayout, toGray, rotGray, binarize, components, markerCandidates, findStrips, analyzeGray, decide, solveH, mapH };
+</script>
+
+<script>
+/* ================= SHEET RENDERING ================= */
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function stripSVG(cfg, L, fills) {
+  const K = cfg.K; let s = "";
+  for (const [x, y] of L.markers) s += `<rect x="${x - L.MK / 2}" y="${y - L.MK / 2}" width="${L.MK}" height="${L.MK}" fill="#000"/>`;
+  s += `<rect x="${L.orient[0] - L.orientS / 2}" y="${L.orient[1] - L.orientS / 2}" width="${L.orientS}" height="${L.orientS}" fill="#000"/>`;
+  const big = L.H > 120;
+  if (L.single) {
+    const F = 'font-family="Arial,sans-serif"';
+    s += `<text x="105" y="24" font-size="6.5" font-weight="bold" text-anchor="middle" ${F}>${esc(cfg.title || "JAVOB VARAQASI")}</text>`;
+    s += `<text x="20" y="37" font-size="4.2" ${F}>Ism, familiya:</text><line x1="48" y1="37.6" x2="190" y2="37.6" stroke="#000" stroke-width="0.3"/>`;
+    s += `<text x="20" y="46" font-size="4.2" ${F}>Sinf:</text><line x1="31" y1="46.6" x2="70" y2="46.6" stroke="#000" stroke-width="0.3"/>`;
+    s += `<text x="78" y="46" font-size="4.2" ${F}>Sana:</text><line x1="91" y1="46.6" x2="130" y2="46.6" stroke="#000" stroke-width="0.3"/>`;
+    s += `<text x="138" y="46" font-size="4.2" ${F}>Ball:</text><line x1="150" y1="46.6" x2="190" y2="46.6" stroke="#000" stroke-width="0.3"/>`;
+    s += `<text x="105" y="54" font-size="3" fill="#555" text-anchor="middle" ${F}>To‘g‘ri javob doirachasini ruchka bilan to‘liq bo‘yang. Burchakdagi qora kvadratlar ustiga yozmang.</text>`;
+  } else {
+  // header
+  s += `<text x="24" y="10.2" font-size="4" font-style="italic" font-family="Arial,sans-serif">Ism, familiya</text>`;
+  s += `<line x1="50" y1="10.8" x2="158" y2="10.8" stroke="#000" stroke-width="0.3"/>`;
+  if (cfg.title) s += `<text x="104" y="15" font-size="2.6" fill="#555" text-anchor="middle" font-family="Arial,sans-serif">${esc(cfg.title)}</text>`;
+  s += `<rect x="166" y="4.5" width="26" height="8" fill="none" stroke="#000" stroke-width="0.35"/><text x="190.5" y="11.3" font-size="2.6" text-anchor="end" font-style="italic" font-family="Arial,sans-serif">test №</text>`;
+  s += `<rect x="166" y="${L.H - 13}" width="26" height="8" fill="none" stroke="#000" stroke-width="0.35"/><text x="190.5" y="${L.H - 6.2}" font-size="2.6" text-anchor="end" font-style="italic" font-family="Arial,sans-serif">ball</text>`;
+  if (big) s += `<text x="24" y="${L.H - 5}" font-size="2.6" fill="#555" font-family="Arial,sans-serif">Doirachani ruchka bilan to‘liq bo‘yang. Burchakdagi qora kvadratlarni yopmang.</text>`;
+  }
+  // questions
+  L.q.forEach((q, i) => {
+    s += `<text x="${q.nx}" y="${q.y + 1.5}" font-size="4" font-weight="bold" text-anchor="end" font-family="Arial,sans-serif">${q.n}.</text>`;
+    q.b.forEach(([x, y], j) => {
+      s += `<circle cx="${x}" cy="${y}" r="${L.r}" fill="#fff" stroke="#222" stroke-width="0.3"/>`;
+      s += `<text x="${x}" y="${y + 0.95}" font-size="2.7" fill="#a8adb5" text-anchor="middle" font-family="Arial,sans-serif">${LET[j]}</text>`;
+      if (fills && fills[i] && fills[i].includes(j)) s += `<circle cx="${x + (Math.random() - .5) * .3}" cy="${y + (Math.random() - .5) * .3}" r="${L.r * (0.85 + Math.random() * 0.12)}" fill="#1a2a6c" opacity="0.92"/>`;
+    });
+  });
+  return s;
+}
+
+function pageSVG(cfg, opts = {}) {
+  const L = stripLayout(cfg.N, cfg.K, cfg.P);
+  const size = opts.px ? `width="${opts.px}" height="${Math.round(opts.px * PAGE_H / PAGE_W)}"` : `width="210mm" height="297mm"`;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" ${size} viewBox="0 0 210 297"><rect width="210" height="297" fill="#fff"/>`;
+  for (let p = 0; p < cfg.P; p++) {
+    s += `<g transform="translate(0 ${p * L.H})">${stripSVG(cfg, L, opts.fills ? opts.fills[p] : null)}</g>`;
+    if (p > 0) s += `<line x1="0" y1="${p * L.H}" x2="210" y2="${p * L.H}" stroke="#666" stroke-width="0.3" stroke-dasharray="2 1.5"/><text x="2" y="${p * L.H - 0.8}" font-size="2.5" fill="#888" font-family="Arial">✂</text>`;
+  }
+  return s + `</svg>`;
+}
+
+function svgToCanvas(svg, w, h) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h); URL.revokeObjectURL(img.src); res(c); };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  });
+}
+
+/* ================= STATE ================= */
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("omr_" + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("omr_" + k, JSON.stringify(v)); } catch (e) { } }
+};
+/* ---- telefon xotirasi (IndexedDB) ---- */
+const DB = {
+  db: null,
+  open() { return new Promise(res => { try { const r = indexedDB.open("javob-varaqasi", 1); r.onupgradeneeded = () => r.result.createObjectStore("tests", { keyPath: "id" }); r.onsuccess = () => { this.db = r.result; res(true); }; r.onerror = () => res(false); } catch (e) { res(false); } }); },
+  all() { return new Promise(res => { if (!this.db) return res([]); const q = this.db.transaction("tests").objectStore("tests").getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); }); },
+  put(o) { return new Promise(res => { if (!this.db) return res(); const tx = this.db.transaction("tests", "readwrite"); tx.objectStore("tests").put(o); tx.oncomplete = res; tx.onerror = res; }); },
+  del(id) { return new Promise(res => { if (!this.db) return res(); const tx = this.db.transaction("tests", "readwrite"); tx.objectStore("tests").delete(id); tx.oncomplete = res; tx.onerror = res; }); }
+};
+let tests = [], cur = null;
+let cfg = { N: 30, K: 4, P: 1, title: "" }, key = [], thr = 0.45, blanks = [];
+let bid = Date.now();
+function newTest(base) {
+  return { id: "t" + Date.now() + Math.random().toString(36).slice(2, 6), created: Date.now(), cfg: Object.assign({ N: 30, K: 4, P: 1, title: "" }, base || {}), key: [], thr: 0.45, blanks: [] };
+}
+function bindTest(t) { cur = t; cfg = t.cfg; key = t.key; thr = t.thr ?? 0.45; blanks = t.blanks; try { localStorage.setItem("omr_cur", t.id); } catch (e) { } }
+let saveT = null;
+function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); }
+async function saveNow() {
+  if (!cur) return;
+  cur.cfg = cfg; cur.key = key; cur.thr = thr; cur.blanks = blanks; cur.updated = Date.now();
+  await DB.put(Object.assign({}, cur, { blanks: blanks.map(b => { const { canvas, ...r } = b; return r; }) }));
+  renderTestSel();
+}
+function testLabel(t) { const n = t.blanks.length; return `${t.cfg.title || "Nomsiz test"} · ${t.cfg.N} savol · ${n} ta natija`; }
+function renderTestSel() {
+  const sel = $("tSel"); sel.innerHTML = tests.slice().sort((a, b) => b.created - a.created).map(t => `<option value="${t.id}"${t === cur ? " selected" : ""}>${esc(testLabel(t))}</option>`).join("");
+}
+function saveCfg() { scheduleSave(); }
+function normKey() { const k = Array.from({ length: cfg.N }, (_, i) => (key[i] ?? -1) < cfg.K ? (key[i] ?? -1) : -1); key.length = 0; key.push(...k); scheduleSave(); }
+
+/* ================= TAB 1 ================= */
+function renderSheet() {
+  const L = stripLayout(cfg.N, cfg.K, cfg.P);
+  $("prev").innerHTML = pageSVG(cfg);
+  const msg = L.fits && cfg.P === 1 ? `Varaqda ${cfg.N} ta savol (${L.cols} ustun × ${L.rows} qator). Ism, sinf va sana faqat varaq tepasida.` : L.fits
+    ? `Har bir blankada ${cfg.N} ta savol (${L.cols} ustun × ${L.rows} qator). Bitta A4 dan ${cfg.P} ta o‘quvchiga blanka chiqadi.`
+    : `<span style="color:var(--bad)">⚠ ${cfg.N} ta savol bunday blankaga sig‘maydi (maksimum ${L.capacity}). ${cfg.P > 1 ? "Blankalar sonini kamaytiring yoki “1 varaq = 1 o‘quvchi” turini tanlang." : cfg.K > 4 ? "Variantlarni A–D ga kamaytiring yoki savollar sonini qisqartiring." : "Savollar sonini qisqartiring."}</span>`;
+  $("bPdf").disabled = $("bPng").disabled = $("bImg").disabled = !L.fits;
+  $("cMsg").innerHTML = msg;
+}
+function readCfg() {
+  const N = Math.max(1, Math.min(200, parseInt($("cN").value) || 15));
+  const P = $("cMode").value === "1" ? 1 : +$("cP").value;
+  $("cPwrap").style.display = P === 1 ? "none" : "";
+  const changed = N !== cfg.N || +$("cK").value !== cfg.K || P !== cfg.P;
+  cfg.N = N; cfg.K = +$("cK").value; cfg.P = P; cfg.title = $("cTitle").value.trim();
+  if (changed && blanks.length) { syncCfgInputs(); toast("Bu testda natijalar bor. Boshqa sozlama uchun “➕ Yangi test” yarating."); return; }
+  saveCfg(); normKey(); renderSheet(); renderKey();
+}
+function syncCfgInputs() { $("cN").value = cfg.N; $("cK").value = cfg.K; $("cMode").value = cfg.P === 1 ? "1" : "m"; if (cfg.P > 1) $("cP").value = cfg.P; $("cPwrap").style.display = cfg.P === 1 ? "none" : ""; $("cTitle").value = cfg.title; }
+["cN", "cK", "cP", "cMode"].forEach(id => $(id).addEventListener("change", readCfg));
+$("cN").addEventListener("input", () => { if (+$("cN").value >= 1 && +$("cN").value <= 200) readCfg(); });
+$("cTitle").addEventListener("input", () => { cfg.title = $("cTitle").value.trim(); saveCfg(); renderSheet(); });
+
+function toast(msg) { let t = $("toast"); if (!t) { t = document.createElement("div"); t.id = "toast"; t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1c2230;color:#fff;padding:10px 16px;border-radius:10px;z-index:60;font-size:14px;max-width:90vw"; document.body.appendChild(t); } t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3500); }
+async function download(name, blob) {
+  const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (mobile && navigator.canShare) {
+    try {
+      const file = new File([blob], name, { type: blob.type || "application/octet-stream" });
+      if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+const fname = ext => "javob-varaqasi-" + cfg.N + "savol-" + cfg.P + "blanka." + ext;
+$("bPng").onclick = async () => { const c = await svgToCanvas(pageSVG(cfg, { px: 2480 }), 2480, 3508); c.toBlob(b => download(fname("png"), b), "image/png"); };
+$("bImg").onclick = async () => { const c = await svgToCanvas(pageSVG(cfg, { px: 2480 }), 2480, 3508); $("imgvI").src = c.toDataURL("image/png"); $("imgv").style.display = "flex"; };
+$("imgvX").onclick = () => $("imgv").style.display = "none";
+$("bPdf").onclick = async () => {
+  if (!window.jspdf) { toast("PDF kutubxonasi yuklanmadi — PNG ni yuklab oling."); return; }
+  $("bPdf").disabled = true;
+  try {
+    const c = await svgToCanvas(pageSVG(cfg, { px: 2480 }), 2480, 3508);
+    const doc = new jspdf.jsPDF({ unit: "mm", format: "a4" });
+    doc.addImage(c.toDataURL("image/png"), "PNG", 0, 0, 210, 297, undefined, "FAST");
+    await download(fname("pdf"), doc.output("blob"));
+  } finally { $("bPdf").disabled = false; }
+};
+
+/* ================= TAB 2: KEY ================= */
+function renderKey() {
+  const g = $("kGrid"); g.innerHTML = "";
+  for (let i = 0; i < cfg.N; i++) {
+    const d = document.createElement("div"); d.className = "kq";
+    d.innerHTML = `<b>${i + 1}.</b>` + Array.from({ length: cfg.K }, (_, j) => `<button class="kb${key[i] === j ? " on" : ""}" data-q="${i}" data-o="${j}">${LET[j]}</button>`).join("");
+    g.appendChild(d);
+  }
+  $("kText").value = key.map(k => k >= 0 ? LET[k] : "-").join("").replace(/(.{5})(?=.)/g, "$1 ");
+  const filled = key.filter(k => k >= 0).length;
+  $("kInfo").innerHTML = filled === cfg.N ? `✅ Kalit to‘liq: ${cfg.N} ta javob.` : `Kiritilgan: ${filled} / ${cfg.N}. Kalitda belgilanmagan savollar baholanmaydi.`;
+}
+$("kGrid").addEventListener("click", e => {
+  const b = e.target.closest(".kb"); if (!b) return;
+  const q = +b.dataset.q, o = +b.dataset.o; key[q] = key[q] === o ? -1 : o;
+  scheduleSave(); renderKey(); rescoreAll();
+});
+$("kText").addEventListener("change", () => {
+  const s = $("kText").value.toUpperCase().replace(/\s+/g, "").replace(/[0-9.,)]/g, "");
+  const k = Array.from({ length: cfg.N }, (_, i) => { const c = s[i]; const j = c ? LET.indexOf(c) : -1; return j >= 0 && j < cfg.K ? j : -1; });
+  key.length = 0; key.push(...k); scheduleSave(); renderKey(); rescoreAll();
+});
+$("kClear").onclick = () => { key.fill(-1); scheduleSave(); renderKey(); rescoreAll(); };
+
+/* ================= TAB 3: SCAN ================= */
+$("thr").addEventListener("input", () => { thr = +$("thr").value; $("thrV").textContent = Math.round(thr * 100) + "%"; scheduleSave(); rescoreAll(); });
+
+function loadImage(file) {
+  return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = () => rej(new Error("Rasmni ochib bo‘lmadi (HEIC bo‘lsa JPG ga o‘tkazing)")); img.src = URL.createObjectURL(file); });
+}
+function imageToCanvas(img, maxSide = 2000) {
+  const sc = Math.min(1, maxSide / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+  const w = Math.round((img.naturalWidth || img.width) * sc), h = Math.round((img.naturalHeight || img.height) * sc);
+  const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img, 0, 0, w, h); return c;
+}
+
+// Rectify one strip into a clean canvas (from rotated gray)
+function rectify(res, s, L, pxmm = 4) {
+  const W = Math.round(L.W * pxmm), Hh = Math.round(L.H * pxmm);
+  const c = document.createElement("canvas"); c.width = W; c.height = Hh;
+  const x = c.getContext("2d"), id = x.createImageData(W, Hh), d = id.data;
+  for (let yy = 0; yy < Hh; yy++) for (let xx = 0; xx < W; xx++) {
+    const [u, v] = mapH(s.H, (xx + .5) / pxmm, (yy + .5) / pxmm);
+    const px = Math.round(u), py = Math.round(v);
+    const val = px >= 0 && py >= 0 && px < res.w && py < res.h ? res.g[py * res.w + px] : 255;
+    const k = (yy * W + xx) * 4; d[k] = d[k + 1] = d[k + 2] = val; d[k + 3] = 255;
+  }
+  x.putImageData(id, 0, 0);
+  return c;
+}
+
+async function processCanvas(canvas, srcName) {
+  const ctx = canvas.getContext("2d");
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const g = toGray(data, canvas.width, canvas.height);
+  const res = analyzeGray(g, canvas.width, canvas.height, cfg);
+  const L = stripLayout(cfg.N, cfg.K, cfg.P);
+  if (!res.strips.length) {
+    addErr(`“${esc(srcName)}”: blanka topilmadi. Burchakdagi 4 ta qora kvadrat to‘liq ko‘rinishi kerak, varaq sozlamalari (savollar soni, blankalar soni) chop etilgan blankaga mos bo‘lsin.`);
+    return 0;
+  }
+  // order: top to bottom
+  for (const s of res.strips) {
+    const cv = rectify(res, s, L);
+    blanks.push({ id: ++bid, name: "", src: srcName, ts: Date.now(), img: cv.toDataURL("image/jpeg", 0.75), canvas: cv, fills: s.fills, over: {} });
+  }
+  const expected = res.nc / 4;
+  if (res.strips.length < Math.floor(expected)) addErr(`“${esc(srcName)}”: ${res.strips.length} ta blanka o‘qildi, lekin rasmda taxminan ${Math.floor(expected)} ta bor shekilli. Qolganlarini alohida suratga oling.`, true);
+  return res.strips.length;
+}
+
+function addErr(html, warn) { const d = document.createElement("div"); d.className = warn ? "warnbox" : "err"; d.style.marginBottom = "8px"; d.innerHTML = html; $("errs").appendChild(d); }
+
+async function handleFiles(files) {
+  files = [...files].filter(f => f.type.startsWith("image/") || /\.(jpe?g|png|webp|bmp|gif)$/i.test(f.name));
+  if (!files.length) return;
+  $("busy").style.display = "block"; $("errs").innerHTML = "";
+  let total = 0;
+  for (const f of files) {
+    try {
+      $("busy").textContent = `⏳ Tahlil qilinmoqda: ${f.name}…`;
+      await new Promise(r => setTimeout(r, 20));
+      const img = await loadImage(f);
+      total += await processCanvas(imageToCanvas(img), f.name);
+    } catch (e) { addErr(`“${esc(f.name)}”: ${esc(e.message || e)}`); }
+  }
+  $("busy").style.display = "none";
+  renderBlanks(); renderResults();
+}
+$("fIn").addEventListener("change", e => { handleFiles(e.target.files); e.target.value = ""; });
+$("fCam").addEventListener("change", e => { handleFiles(e.target.files); e.target.value = ""; });
+const drop = $("drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+document.addEventListener("paste", e => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) handleFiles(fs); });
+
+// Demo: generate a filled page photo
+$("bDemo").onclick = async () => {
+  const fills = [];
+  for (let p = 0; p < cfg.P; p++) fills.push(Array.from({ length: cfg.N }, (_, i) => {
+    const r = Math.random();
+    if (r < 0.06) return [];
+    const k = key[i] >= 0 && r < 0.75 ? key[i] : Math.floor(Math.random() * cfg.K);
+    return [k];
+  }));
+  const pw = 1300, ph = Math.round(pw * 297 / 210);
+  const sheet = await svgToCanvas(pageSVG(cfg, { px: pw, fills }), pw, ph);
+  const c = document.createElement("canvas"); c.width = 1600; c.height = 2100;
+  const x = c.getContext("2d");
+  const grd = x.createLinearGradient(0, 0, 1600, 2100); grd.addColorStop(0, "#6b5b4b"); grd.addColorStop(1, "#4a3f35");
+  x.fillStyle = grd; x.fillRect(0, 0, c.width, c.height);
+  x.save(); x.translate(800, 1050); x.rotate((Math.random() - .5) * 0.12); x.drawImage(sheet, -pw / 2, -ph / 2); x.restore();
+  const sh = x.createLinearGradient(0, 0, 1600, 0); sh.addColorStop(0, "rgba(0,0,0,0.18)"); sh.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = sh; x.fillRect(0, 0, 1600, 2100);
+  $("errs").innerHTML = ""; $("busy").style.display = "block";
+  await new Promise(r => setTimeout(r, 20));
+  await processCanvas(c, "sinov-rasmi.png");
+  $("busy").style.display = "none";
+  renderBlanks(); renderResults();
+};
+
+/* ================= SCORING ================= */
+function answersOf(b) { return b.fills.map((f, i) => b.over[i] !== undefined ? b.over[i] : decide(f, thr)); }
+function scoreOf(b) {
+  const a = answersOf(b); let ok = 0, bad = 0, emp = 0, tot = 0;
+  a.forEach((v, i) => { if (key[i] < 0) return; tot++; if (v === key[i]) ok++; else if (v === -1) emp++; else bad++; });
+  return { a, ok, bad, emp, tot, pct: tot ? Math.round(ok / tot * 1000) / 10 : 0 };
+}
+function letter(v) { return v >= 0 ? LET[v] : v === -2 ? "?" : "–"; }
+
+function drawOverlay(b) {
+  const L = stripLayout(cfg.N, cfg.K, cfg.P);
+  const c = document.createElement("canvas"); c.width = b.canvas ? b.canvas.width : Math.round(L.W * 4); c.height = b.canvas ? b.canvas.height : Math.round(L.H * 4);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); if (b.canvas) x.drawImage(b.canvas, 0, 0);
+  const k = c.width / L.W, a = answersOf(b);
+  x.lineWidth = 2.2;
+  L.q.forEach((q, i) => {
+    const v = a[i], kk = key[i];
+    if (v >= 0) { const [cx, cy] = q.b[v]; x.strokeStyle = kk < 0 ? "#2f5bea" : v === kk ? "#12a150" : "#d92d20"; x.beginPath(); x.arc(cx * k, cy * k, L.r * k + 3, 0, 7); x.stroke(); }
+    if (v === -2) { q.b.forEach(([cx, cy], j) => { if (b.fills[i][j] >= thr) { x.strokeStyle = "#dc8a00"; x.beginPath(); x.arc(cx * k, cy * k, L.r * k + 3, 0, 7); x.stroke(); } }); }
+    if (kk >= 0 && v !== kk) { const [cx, cy] = q.b[kk]; x.strokeStyle = "#12a150"; x.setLineDash([4, 3]); x.beginPath(); x.arc(cx * k, cy * k, L.r * k + 3, 0, 7); x.stroke(); x.setLineDash([]); }
+  });
+  const sc = scoreOf(b);
+  if (sc.tot) { x.font = `bold ${Math.round(5 * k)}px system-ui`; x.fillStyle = "#d92d20"; x.textAlign = "center"; x.fillText(`${sc.ok}`, 179 * k, (L.H - 6.6) * k); }
+  return c;
+}
+
+/* ================= RENDER BLANKS ================= */
+function renderBlanks() {
+  const box = $("blanks"); box.innerHTML = "";
+  blanks.forEach((b, idx) => {
+    const sc = scoreOf(b);
+    const el = document.createElement("div"); el.className = "bk";
+    const cv = drawOverlay(b);
+    cv.onclick = () => zoom(cv);
+    el.appendChild(cv);
+    const bd = document.createElement("div"); bd.className = "bd";
+    bd.innerHTML = `<div class="hd"><span class="mut small">#${idx + 1}</span><input type="text" placeholder="Ism familiya" value="${esc(b.name)}"><span class="score">${sc.ok}<small> / ${sc.tot} · ${sc.pct}%</small></span><button class="btn s" title="O‘chirish">✕</button></div>
+      <div class="ans">${sc.a.map((v, i) => { const kk = key[i]; const cl = v === -2 ? "mul" : v === -1 ? "emp" : kk < 0 ? "" : v === kk ? "ok" : "bad"; return `<span class="a ${cl}${b.over[i] !== undefined ? " ed" : ""}" data-i="${i}" title="Bosib o‘zgartiring">${i + 1}${letter(v)}</span>`; }).join("")}</div>
+      <div class="small mut" style="margin-top:6px">${esc(b.src)}${b.ts ? " · " + new Date(b.ts).toLocaleString() : ""}</div>`;
+    const inp = bd.querySelector("input"); inp.oninput = () => { b.name = inp.value; renderResults(); };
+    bd.querySelector("button").onclick = () => { blanks.splice(idx, 1); renderBlanks(); renderResults(); };
+    bd.querySelector(".ans").onclick = e => {
+      const s = e.target.closest(".a"); if (!s) return; const i = +s.dataset.i;
+      const cur = answersOf(b)[i]; const nxt = cur < 0 ? 0 : cur + 1 >= cfg.K ? -1 : cur + 1;
+      b.over[i] = nxt; renderBlanks(); renderResults();
+    };
+    el.appendChild(bd); box.appendChild(el);
+  });
+  $("cnt").textContent = blanks.length;
+}
+function rescoreAll() { renderBlanks(); renderResults(); }
+function zoom(cv) { const z = $("zc"); z.width = cv.width; z.height = cv.height; z.getContext("2d").drawImage(cv, 0, 0); $("zoom").style.display = "flex"; }
+$("zoom").onclick = () => $("zoom").style.display = "none";
+
+/* ================= RESULTS ================= */
+function renderResults() {
+  scheduleSave();
+  const rows = blanks.map((b, i) => ({ i, b, s: scoreOf(b) }));
+  const t = $("rtab");
+  if (!rows.length) { t.innerHTML = `<tr><td class="mut">Hali tekshirilgan blanka yo‘q. “3. Tekshirish” bo‘limida rasm yuklang.</td></tr>`; $("stats").innerHTML = ""; $("qstat").innerHTML = ""; return; }
+  t.innerHTML = `<tr><th>#</th><th>Ism familiya</th><th class="num">To‘g‘ri</th><th class="num">Noto‘g‘ri</th><th class="num">Bo‘sh</th><th class="num">Foiz</th><th>Javoblar</th></tr>` +
+    rows.map(r => `<tr><td>${r.i + 1}</td><td>${esc(r.b.name) || '<span class="mut">—</span>'}</td><td class="num"><b>${r.s.ok}</b></td><td class="num">${r.s.bad}</td><td class="num">${r.s.emp}</td><td class="num">${r.s.pct}%<span class="bar"><i style="width:${r.s.pct}%"></i></span></td><td style="font-family:ui-monospace,monospace;font-size:12px">${r.s.a.map(letter).join("")}</td></tr>`).join("");
+  const pcts = rows.map(r => r.s.pct), avg = pcts.reduce((a, b) => a + b, 0) / pcts.length;
+  $("stats").innerHTML = `<div class="stat"><b>${rows.length}</b><span>o‘quvchi</span></div><div class="stat"><b>${avg.toFixed(1)}%</b><span>o‘rtacha</span></div><div class="stat"><b>${Math.max(...pcts)}%</b><span>eng yuqori</span></div><div class="stat"><b>${Math.min(...pcts)}%</b><span>eng past</span></div>`;
+  $("qstat").innerHTML = Array.from({ length: cfg.N }, (_, i) => {
+    if (key[i] < 0) return `<div class="qs"><b>${i + 1}</b><span class="mut">kalit yo‘q</span></div>`;
+    const ok = rows.filter(r => r.s.a[i] === key[i]).length, p = Math.round(ok / rows.length * 100);
+    const bg = p >= 70 ? "var(--okb)" : p >= 40 ? "var(--warnb)" : "var(--badb)";
+    return `<div class="qs" style="background:${bg}"><b>${i + 1} (${LET[key[i]]})</b>${p}%</div>`;
+  }).join("");
+}
+function tableData() {
+  const head = ["#", "Ism familiya", "To'g'ri", "Noto'g'ri", "Bo'sh", "Jami", "Foiz", ...Array.from({ length: cfg.N }, (_, i) => String(i + 1))];
+  const body = blanks.map((b, i) => { const s = scoreOf(b); return [i + 1, b.name, s.ok, s.bad, s.emp, s.tot, s.pct, ...s.a.map(letter)]; });
+  return [head, ["", "KALIT", "", "", "", "", "", ...key.map(letter)], ...body];
+}
+$("bCsv").onclick = () => {
+  const csv = tableData().map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(";")).join("\r\n");
+  download(`natijalar${cfg.title ? "-" + cfg.title.replace(/[^\wа-яё' -]/gi, "") : ""}.csv`, new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+};
+$("bCopy").onclick = async () => {
+  const tsv = tableData().map(r => r.join("\t")).join("\n");
+  try { await navigator.clipboard.writeText(tsv); $("bCopy").textContent = "✅ Nusxalandi"; } catch (e) { $("bCopy").textContent = "Nusxalab bo‘lmadi"; }
+  setTimeout(() => $("bCopy").textContent = "📋 Nusxalash", 1800);
+};
+$("bReset").onclick = () => {
+  const b = $("bReset"); if (!blanks.length) return;
+  if (!b.dataset.arm) { b.dataset.arm = 1; b.textContent = "⚠ Tasdiqlash uchun yana bosing"; setTimeout(() => { delete b.dataset.arm; b.textContent = "🗑 Natijalarni o‘chirish"; }, 3000); return; }
+  delete b.dataset.arm; b.textContent = "🗑 Natijalarni o‘chirish"; blanks.length = 0; renderBlanks(); renderResults();
+};
+
+/* ================= NAV + INIT ================= */
+$("nav").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.id === b.dataset.t));
+  window.scrollTo(0, 0);
+});
+function loadCanvas(b) {
+  return new Promise(res => { if (b.canvas || !b.img) return res(); const im = new Image(); im.onload = () => { const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext("2d").drawImage(im, 0, 0); b.canvas = c; res(); }; im.onerror = res; im.src = b.img; });
+}
+async function openTest(t) {
+  bindTest(t);
+  await Promise.all(blanks.map(loadCanvas));
+  $("thr").value = thr; $("thrV").textContent = Math.round(thr * 100) + "%";
+  syncCfgInputs(); normKey(); renderSheet(); renderKey(); renderBlanks(); renderResults(); renderTestSel();
+}
+$("tSel").onchange = () => { const t = tests.find(x => x.id === $("tSel").value); if (t) openTest(t); };
+$("tNew").onclick = async () => {
+  await saveNow();
+  const t = newTest({ N: cfg.N, K: cfg.K, P: cfg.P }); tests.push(t); await openTest(t); await saveNow();
+  document.querySelector('nav button[data-t="t1"]').click(); $("cTitle").focus(); toast("Yangi test yaratildi — nomi va savollar sonini kiriting");
+};
+$("tDel").onclick = async () => {
+  const b = $("tDel");
+  if (!b.dataset.arm) { b.dataset.arm = 1; b.textContent = "O‘chirishni tasdiqlang"; setTimeout(() => { delete b.dataset.arm; b.textContent = "🗑"; }, 3000); return; }
+  delete b.dataset.arm; b.textContent = "🗑";
+  await DB.del(cur.id); tests = tests.filter(t => t !== cur);
+  if (!tests.length) { const t = newTest(); tests.push(t); }
+  await openTest(tests.slice().sort((a, b) => b.created - a.created)[0]); await saveNow(); toast("Test o‘chirildi");
+};
+(async () => {
+  await DB.open();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
+  tests = await DB.all();
+  if (!tests.length) {
+    // eski (brauzer) sozlamalarini ko‘chirish
+    const t = newTest(store.get("cfg", {})); const k = store.get("key", null); if (k) t.key = k; tests.push(t);
+  }
+  let id = null; try { id = localStorage.getItem("omr_cur"); } catch (e) { }
+  await openTest(tests.find(t => t.id === id) || tests.slice().sort((a, b) => b.created - a.created)[0]);
+  await saveNow();
+})();
+
+/* ---- o‘rnatish (PWA) ---- */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => { });
+let deferredPrompt = null;
+const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredPrompt = e; $("bInstall").style.display = ""; });
+$("bInstall").onclick = async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; $("bInstall").style.display = "none"; };
+window.addEventListener("appinstalled", () => { $("bInstall").style.display = "none"; toast("✅ Ilova o‘rnatildi"); });
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+if (isIOS && !standalone) {
+  let hide = false; try { hide = localStorage.getItem("omr_ioshint") === "1"; } catch (e) { }
+  if (!hide) { $("instTxt").innerHTML = `📲 iPhone’ga o‘rnatish: Safari’da pastdagi <b>Ulashish ⬆</b> tugmasi → <b>“Ekranga qo‘shish” (Add to Home Screen)</b>. <a href="#" id="instX">Yopish</a>`; $("instBar").style.display = "block"; $("instX").onclick = e => { e.preventDefault(); $("instBar").style.display = "none"; try { localStorage.setItem("omr_ioshint", "1"); } catch (er) { } }; }
+}
+</script>
+</body>
+</html>
