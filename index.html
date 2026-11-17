@@ -200,7 +200,7 @@ const LET = "ABCDE";
 const PAGE_W = 210, PAGE_H = 297;
 
 // Geometry of ONE blank (strip) in mm. Strip coords: x 0..210, y 0..H
-function stripLayout(N, K, perPage) {
+function stripLayout(N, K, perPage, idGrid) {
   const H = PAGE_H / perPage;
   const MK = 7;                                   // marker size
   const markers = [[9, 8.5], [201, 8.5], [201, H - 8.5], [9, H - 8.5]];
@@ -213,10 +213,13 @@ function stripLayout(N, K, perPage) {
   const idRowsY = single ? [39.5, 46] : [17, 23];
   const idRows = idRowsY.map(y => Array.from({ length: 10 }, (_, j) => [idX0 + j * idPitch, y]));
   const idLabel = single ? [141, 34] : [141, 12.9];
+  // compact printed ID code: 7 data bits + 1 parity bit
+  const codeS = 2.6, codeY = single ? 29 : 7.5;
+  const code = Array.from({ length: 8 }, (_, i) => [142.3 + i * 3.6, codeY]);
   const avail = yBot - yTop;
   const rowsMax = Math.max(1, Math.floor(avail / 5.3) + 1);
   const blockW = numW + K * pitch;
-  const X0 = 14, X1 = perPage === 1 ? 196 : 134;
+  const X0 = 14, X1 = idGrid && !single ? 134 : (single ? 196 : 186);
   const maxCols = Math.max(1, Math.floor((X1 - X0) / (blockW + 2)));
   const rowsCap = single ? Math.min(rowsMax, Math.max(25, Math.ceil(N / maxCols))) : rowsMax;
   let cols = Math.ceil(N / rowsCap);
@@ -232,7 +235,7 @@ function stripLayout(N, K, perPage) {
     const y = yTop + rr * rowH;
     q.push({ n: i + 1, nx: bx + numW - 1, y, b: Array.from({ length: K }, (_, j) => [bx + numW + j * pitch + pitch / 2, y]) });
   }
-  return { H, W: PAGE_W, MK, markers, orient, orientS, r, q, rows, cols, fits, rowsMax, maxCols, capacity: rowsMax * maxCols, single, idRows, idR, idLabel };
+  return { H, W: PAGE_W, MK, markers, orient, orientS, r, q, rows, cols, fits, rowsMax, maxCols, capacity: rowsMax * maxCols, single, idGrid: !!idGrid, idRows: idGrid ? idRows : [], idR, idLabel, code, codeS };
 }
 
 function toGray(data, w, h) {
@@ -377,8 +380,17 @@ function findStrips(bin, w, h, cands, L) {
   return strips;
 }
 
+function codeBits(id) { const v = +id, b = Array.from({ length: 7 }, (_, i) => (v >> i) & 1); b.push(b.reduce((s, x) => s + x, 0) % 2); return b; }
+function decodeCode(f) {
+  if (!f || !f.length) return null;
+  const b = f.map(x => x > 0.5 ? 1 : 0); if (!b.some(Boolean)) return null;
+  if (f.some(x => x > 0.25 && x < 0.5)) return null;
+  if (b.reduce((s, x) => s + x, 0) % 2) return null;
+  const v = b.slice(0, 7).reduce((s, x, i) => s + (x << i), 0);
+  return v >= 1 && v <= 99 ? String(v).padStart(2, "0") : null;
+}
 function decideId(idFills, thr) {
-  if (!idFills) return null;
+  if (!idFills || !idFills.length) return null;
   const d = idFills.map(f => decide(f, thr));
   return d.every(x => x >= 0) ? d.join("") : null;
 }
@@ -392,7 +404,7 @@ function decide(fills, thr) {
 
 // Analyze grayscale image; tries 4 rotations; returns {rot, w, h, strips:[{H, fills}]}
 function analyzeGray(g0, w0, h0, cfg) {
-  const L = stripLayout(cfg.N, cfg.K, cfg.P);
+  const L = stripLayout(cfg.N, cfg.K, cfg.P, cfg.idGrid);
   let best = null;
   for (const rot of [0, 90, 270, 180]) {
     const { g, w, h } = rotGray(g0, w0, h0, rot);
@@ -405,12 +417,13 @@ function analyzeGray(g0, w0, h0, cfg) {
   const rr = L.r * 0.55;
   for (const s of best.strips) {
     s.fills = L.q.map(q => q.b.map(([x, y]) => fillAt(best.bin, best.w, best.h, s.H, x, y, rr)));
+    s.codeFills = L.code.map(([x, y]) => fillAt(best.bin, best.w, best.h, s.H, x, y, 0.85));
     s.idFills = L.idRows.map(row => row.map(([x, y]) => fillAt(best.bin, best.w, best.h, s.H, x, y, L.idR * 0.55)));
   }
   return best;
 }
 
-if (typeof module !== "undefined") module.exports = { decideId, stripLayout, toGray, rotGray, binarize, components, markerCandidates, findStrips, analyzeGray, decide, solveH, mapH };
+if (typeof module !== "undefined") module.exports = { decodeCode, codeBits, decideId, stripLayout, toGray, rotGray, binarize, components, markerCandidates, findStrips, analyzeGray, decide, solveH, mapH };
 
 </script>
 
@@ -567,13 +580,16 @@ function stripSVG(cfg, L, opt = {}) {
     const sub = [cfg.title, opt.groupName, opt.date ? fmtDate(opt.date) : ""].filter(Boolean).join(" · ");
     if (sub) s += `<text x="90" y="14.6" font-size="2.5" fill="#555" text-anchor="middle" ${F}>${esc(sub)}</text>`;
   }
-  // ID grid
+  // printed ID code (only on named blanks)
+  if (person) {
+    codeBits(person.id).forEach((bit, i) => { if (bit) { const [x, y] = L.code[i]; s += `<rect x="${x - L.codeS / 2}" y="${y - L.codeS / 2}" width="${L.codeS}" height="${L.codeS}" fill="#000"/>`; } });
+    s += `<text x="${L.code[7][0] + 3}" y="${L.code[0][1] + 1}" font-size="2.6" fill="#555" ${F}>ID ${esc(person.id)}</text>`;
+  }
+  // ID grid (optional)
   const [lx, ly] = L.idLabel;
-  s += `<text x="${lx}" y="${ly}" font-size="${L.single ? 3.4 : 2.8}" font-weight="bold" ${F}>ID raqam${person ? ": " + esc(person.id) : ""}</text>`;
-  const digs = person ? person.id.split("").map(Number) : null;
+  if (L.idGrid) s += `<text x="${lx}" y="${ly}" font-size="${L.single ? 3.4 : 2.8}" font-weight="bold" ${F}>ID raqam</text>`;
   L.idRows.forEach((row, ri) => row.forEach(([x, y], j) => {
     s += `<circle cx="${x}" cy="${y}" r="${L.idR}" fill="#fff" stroke="#222" stroke-width="0.28"/><text x="${x}" y="${y + 0.85}" font-size="2.4" fill="#a8adb5" text-anchor="middle" ${F}>${j}</text>`;
-    if (digs && digs[ri] === j) s += `<circle cx="${x}" cy="${y}" r="${L.idR * 0.92}" fill="#000"/>`;
     if (opt.idFill && opt.idFill[ri] === j) s += `<circle cx="${x}" cy="${y}" r="${L.idR * 0.9}" fill="#1a2a6c"/>`;
   }));
   // questions
@@ -589,7 +605,7 @@ function stripSVG(cfg, L, opt = {}) {
 }
 // slots: array (length P) of {person, fills, idFill} or null
 function pageSVG(cfg, slots, opt = {}) {
-  const L = stripLayout(cfg.N, cfg.K, cfg.P);
+  const L = stripLayout(cfg.N, cfg.K, cfg.P, cfg.idGrid);
   const size = opt.px ? `width="${opt.px}" height="${Math.round(opt.px * PAGE_H / PAGE_W)}"` : `width="210mm" height="297mm"`;
   let s = `<svg xmlns="http://www.w3.org/2000/svg" ${size} viewBox="0 0 210 297"><rect width="210" height="297" fill="#fff"/>`;
   for (let p = 0; p < cfg.P; p++) {
@@ -729,7 +745,7 @@ function groupTestsView(g, ts) {
 }
 async function newTest(g) {
   const last = groupTests(g).slice(-1)[0];
-  const t = { id: uid("t"), groupId: g.id, created: Date.now(), date: today(), cfg: Object.assign({ N: 30, K: 4, P: 1 }, last ? { N: last.cfg.N, K: last.cfg.K, P: last.cfg.P } : {}, { title: `Test ${groupTests(g).length + 1}` }), key: [], thr: 0.45, blanks: [] };
+  const t = { id: uid("t"), lv: 3, groupId: g.id, created: Date.now(), date: today(), cfg: Object.assign({ N: 30, K: 4, P: 1, idGrid: false }, last ? { N: last.cfg.N, K: last.cfg.K, P: last.cfg.P, idGrid: !!last.cfg.idGrid } : {}, { title: `Test ${groupTests(g).length + 1}` }), key: [], thr: 0.45, blanks: [] };
   t.key = Array(t.cfg.N).fill(-1);
   tests.push(t); await DB.put("tests", t); ui.ttab = "sheet"; go("#t/" + t.id);
 }
@@ -864,6 +880,7 @@ function tabSheet(t, g) {
       <label class="f grow">Blanka turi<select id="cMode" ${locked ? "disabled" : ""}><option value="1">1 varaq = 1 o‘quvchi</option><option value="m">1 varaqda bir nechta</option></select></label>
       <label class="f" id="cPw">A4 da nechta<select id="cP" ${locked ? "disabled" : ""}><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
     </div>
+    <label style="display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:14px;cursor:pointer"><input type="checkbox" id="cGrid" ${c.idGrid ? "checked" : ""} ${locked ? "disabled" : ""} style="width:20px;height:20px;margin:1px 0 0;accent-color:var(--acc)"><span><b>ID doirachalari</b> <span class="mut">— bo‘sh blankada o‘quvchi o‘z ID sini belgilaydi. Ko‘p joy oladi; ismli blankalar uchun shart emas.</span></span></label>
     <p id="cMsg" class="small mut" style="margin:10px 0 0"></p>
     ${locked ? `<p class="small mut" style="margin:6px 0 0">🔒 Natijalar bor — savollar soni va blanka turi qulflangan.</p>` : ""}</div>
     <div class="card"><h2>Chop etish</h2>
@@ -872,11 +889,11 @@ function tabSheet(t, g) {
         <button class="btn" id="pBlank">${IC.dl} Bo‘sh blanka (PDF)</button>
         <button class="btn" id="pPng">${IC.img} PNG</button>
       </div>
-      <div class="note"><b>Ismli blankalar</b> — har bir o‘quvchining ismi va ID si oldindan bosiladi, skanerda o‘quvchi xatosiz aniqlanadi.<br><b>Bo‘sh blanka</b> — o‘quvchi “ID raqam” qatorlariga o‘z ID sini belgilaydi (masalan 07: yuqori qatorda 0, pastki qatorda 7).</div>
+      <div class="note"><b>Ismli blankalar</b> — har bir o‘quvchining ismi va kichik ID kodi (yuqoridagi mayda kvadratchalar) bosiladi, skanerda o‘quvchi avtomatik aniqlanadi.<br><b>Bo‘sh blanka</b> — ${c.idGrid ? "o‘quvchi “ID raqam” qatorlariga o‘z ID sini belgilaydi (07: yuqorida 0, pastda 7)." : "skanerlagach o‘quvchini ro‘yxatdan tanlaysiz (yoki “ID doirachalari”ni yoqing)."}</div>
       <div class="preview" id="prev" style="margin-top:12px"></div></div>`;
   $("cK").value = c.K; $("cMode").value = c.P === 1 ? "1" : "m"; if (c.P > 1) $("cP").value = c.P; $("cPw").style.display = c.P === 1 ? "none" : "";
   const render = () => {
-    const L = stripLayout(c.N, c.K, c.P);
+    const L = stripLayout(c.N, c.K, c.P, c.idGrid);
     const sample = g && g.students[0] ? null : null;
     $("prev").innerHTML = pageSVG(c, null, { groupName: g ? g.name : "", date: t.date });
     $("cMsg").innerHTML = !L.fits ? `<span style="color:var(--bad)">⚠ ${c.N} ta savol sig‘maydi (maksimum ${L.capacity}). ${c.P > 1 ? "A4 dagi blankalar sonini kamaytiring yoki “1 varaq = 1 o‘quvchi” ni tanlang." : "Savollar sonini kamaytiring."}</span>`
@@ -886,7 +903,7 @@ function tabSheet(t, g) {
   render();
   const upd = () => {
     if (!locked) {
-      c.N = Math.max(1, Math.min(200, parseInt($("cN").value) || c.N)); c.K = +$("cK").value; c.P = $("cMode").value === "1" ? 1 : +$("cP").value;
+      c.N = Math.max(1, Math.min(200, parseInt($("cN").value) || c.N)); c.K = +$("cK").value; c.P = $("cMode").value === "1" ? 1 : +$("cP").value; c.idGrid = $("cGrid").checked;
       $("cPw").style.display = c.P === 1 ? "none" : "";
       t.key = Array.from({ length: c.N }, (_, i) => (t.key[i] ?? -1) < c.K ? (t.key[i] ?? -1) : -1);
     }
@@ -895,6 +912,7 @@ function tabSheet(t, g) {
     $("bar").querySelector("h1").textContent = c.title || "Nomsiz test"; $("bar").querySelector(".sub").textContent = `${g ? g.name : ""} · ${fmtDate(t.date)}`;
   };
   ["cN", "cK", "cMode", "cP", "cDate"].forEach(id => $(id).addEventListener("change", upd));
+  $("cGrid").addEventListener("change", () => { upd(); tabSheet(t, g); });
   $("cN").addEventListener("input", () => { const v = +$("cN").value; if (v >= 1 && v <= 200) upd(); });
   $("cTitle").addEventListener("input", upd);
   const opt = { groupName: g ? g.name : "", date: t.date };
@@ -951,12 +969,12 @@ let scanErrs = [];
 async function processCanvas(t, canvas, srcName) {
   const { data } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
   const res = analyzeGray(toGray(data, canvas.width, canvas.height), canvas.width, canvas.height, t.cfg);
-  const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P), g = G(t.groupId);
+  const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid), g = G(t.groupId);
   if (!res.strips.length) { scanErrs.push({ e: 1, m: `“${esc(srcName)}”: blanka topilmadi. 4 ta burchak kvadrati to‘liq ko‘rinsin, blanka shu test sozlamasi bilan chop etilgan bo‘lsin.` }); return 0; }
   for (const s of res.strips) {
-    const detId = decideId(s.idFills, thrOf(t));
+    const detId = decodeCode(s.codeFills) || decideId(s.idFills, thrOf(t));
     const cv = rectify(res, s, L);
-    t.blanks.push({ id: uid("b"), src: srcName, ts: Date.now(), img: cv.toDataURL("image/jpeg", 0.75), canvas: cv, fills: s.fills, idFills: s.idFills, detId, sid: detId && g && g.students.some(x => x.id === detId) ? detId : null, over: {} });
+    t.blanks.push({ id: uid("b"), src: srcName, ts: Date.now(), img: cv.toDataURL("image/jpeg", 0.75), canvas: cv, fills: s.fills, idFills: s.idFills, codeFills: s.codeFills, detId, sid: detId && g && g.students.some(x => x.id === detId) ? detId : null, over: {} });
   }
   if (res.strips.length < Math.floor(res.nc / 4)) scanErrs.push({ m: `“${esc(srcName)}”: ${res.strips.length} ta blanka o‘qildi, rasmda taxminan ${Math.floor(res.nc / 4)} ta bor. Qolganini alohida suratga oling.` });
   return res.strips.length;
@@ -990,12 +1008,12 @@ function tabScan(t, g) {
   ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("over"); }));
   ["dragleave", "drop"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove("over"); }));
   d.addEventListener("drop", e => handleFiles(t, e.dataTransfer.files));
-  $("thr").oninput = () => { t.thr = +$("thr").value; $("thrV").textContent = Math.round(t.thr * 100) + "%"; t.blanks.forEach(b => { if (!b.manualSid) { const id = decideId(b.idFills, t.thr); b.detId = id; if (id && g.students.some(s => s.id === id)) b.sid = id; } }); saveTest(t); renderBlanks(t, g); };
+  $("thr").oninput = () => { t.thr = +$("thr").value; $("thrV").textContent = Math.round(t.thr * 100) + "%"; t.blanks.forEach(b => { if (!b.manualSid) { const id = decodeCode(b.codeFills) || decideId(b.idFills, t.thr); b.detId = id; if (id && g.students.some(s => s.id === id)) b.sid = id; } }); saveTest(t); renderBlanks(t, g); };
   $("bDemo").onclick = () => demo(t, g);
   renderBlanks(t, g);
 }
 function drawOverlay(t, b) {
-  const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P), c = document.createElement("canvas");
+  const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid), c = document.createElement("canvas");
   c.width = b.canvas ? b.canvas.width : Math.round(L.W * 4); c.height = b.canvas ? b.canvas.height : Math.round(L.H * 4);
   const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); if (b.canvas) x.drawImage(b.canvas, 0, 0);
   const k = c.width / L.W, a = answersOf(t, b), thr = thrOf(t); x.lineWidth = 2.2;
@@ -1018,6 +1036,7 @@ function renderBlanks(t, g) {
     let chip;
     if (b.sid && cnt[b.sid] > 1) chip = `<span class="chip bad">⚠ Bu o‘quvchi ${cnt[b.sid]} marta skanerlangan</span>`;
     else if (b.sid && !b.manualSid) chip = `<span class="chip ok">✓ ID ${b.sid} avtomatik aniqlandi</span>`;
+    else if (!b.sid && !b.detId && !t.cfg.idGrid) chip = `<span class="chip warn">Bo‘sh blanka — o‘quvchini ro‘yxatdan tanlang</span>`;
     else if (b.sid) chip = `<span class="chip ok">✓ Qo‘lda tanlangan</span>`;
     else chip = `<span class="chip warn">${b.detId ? `ID ${b.detId} guruhda yo‘q` : "ID aniqlanmadi"} — o‘quvchini tanlang</span>`;
     const bd = document.createElement("div"); bd.className = "bd";
@@ -1040,7 +1059,7 @@ async function demo(t, g) {
   for (let p = 0; p < c.P; p++) {
     const fills = Array.from({ length: c.N }, (_, i) => { const r = Math.random(); if (r < 0.05) return []; const k = (t.key[i] ?? -1) >= 0 && r < 0.4 + 0.5 * Math.random() ? t.key[i] : Math.floor(Math.random() * c.K); return [k]; });
     const st = pool[p];
-    slots.push(st ? { fills, idFill: st.id.split("").map(Number) } : { fills });
+    slots.push(st ? (c.idGrid ? { fills, idFill: st.id.split("").map(Number) } : { fills, person: st }) : { fills });
   }
   const pw = 1300, ph = Math.round(pw * 297 / 210);
   const sheet = await svgToCanvas(pageSVG(c, slots, { px: pw, groupName: g.name, date: t.date }), pw, ph);
@@ -1096,6 +1115,7 @@ function loadCanvas(b) { return new Promise(res => { if (b.canvas || !b.img) ret
     if (!g) { g = { id: uid("g"), name: "Umumiy guruh", created: Date.now(), students: [] }; groups.push(g); await saveGroup(g); }
     for (const t of orphan) { t.groupId = g.id; t.date = t.date || today(); t.cfg.title = t.cfg.title || "Nomsiz test"; t.blanks.forEach(b => { b.id = b.id || uid("b"); }); await DB.put("tests", t); }
   }
+  for (const t of tests) if (!t.lv) { t.lv = 3; if (t.cfg.idGrid === undefined) t.cfg.idGrid = true; await DB.put("tests", t); }
   tests.forEach(t => { t.date = t.date || today(); t.key = t.key || []; t.blanks = t.blanks || []; });
   route();
   await Promise.all(tests.flatMap(t => t.blanks.map(loadCanvas)));
