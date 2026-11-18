@@ -182,6 +182,13 @@ tr.cl{cursor:pointer}tr.cl:hover td{background:#fafbfe}
 .sheet label.f{margin-bottom:12px}
 #zoom{position:fixed;inset:0;background:rgba(10,14,22,.9);display:none;align-items:center;justify-content:center;z-index:70;padding:16px;cursor:zoom-out}
 #zoom canvas{max-width:100%;max-height:100%;background:#fff;border-radius:6px}
+.mlPart{margin-top:12px}.mlPartHd{font-weight:700;font-size:13px;color:var(--acc-t);background:var(--acc-s);display:inline-block;padding:3px 10px;border-radius:8px}
+.mlSc{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:14px}
+.wrRow{border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:8px}.wrRow.done{border-color:#cfe9d8;background:#fbfefc}
+.wrHd{display:flex;align-items:center;gap:10px;margin-bottom:6px}.wrHd b{min-width:26px}.wrHd .mut{flex:1}
+.wrBtns{display:flex;gap:6px}.wb{width:44px;height:38px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:18px;cursor:pointer}
+.wb.ok.on{background:var(--ok);border-color:var(--ok);color:#fff}.wb.no.on{background:var(--bad);border-color:var(--bad);color:#fff}
+.wrImg{width:100%;height:auto;display:block;border-radius:6px;background:#fff}
 .cam{position:fixed;inset:0;background:#000;z-index:90;display:none}
 .cam.on{display:block}
 .cam video,.cam canvas{position:absolute;inset:0;width:100%;height:100%}
@@ -487,6 +494,320 @@ function analyzeGray(g0, w0, h0, cfg) {
 
 if (typeof module !== "undefined") module.exports = { decodeCode, codeBits, decideId, stripLayout, toGray, rotGray, binarize, components, markerCandidates, findStrips, analyzeGray, decide, solveH, mapH };
 
+/* ===== Multilevel (DTM) answer sheet reader. Template units: PDF points, origin top-left. ===== */
+function mlDLT(src, dst) {
+  // least-squares homography (normalized DLT via 8x8 normal equations)
+  const n = src.length; if (n < 4) return null;
+  const norm = pts => { let mx = 0, my = 0; pts.forEach(p => { mx += p[0]; my += p[1]; }); mx /= n; my /= n; let d = 0; pts.forEach(p => { d += Math.hypot(p[0] - mx, p[1] - my); }); d = d / n || 1; const s = Math.SQRT2 / d; return { mx, my, s }; };
+  const a = norm(src), b = norm(dst);
+  const S = src.map(p => [(p[0] - a.mx) * a.s, (p[1] - a.my) * a.s]), D = dst.map(p => [(p[0] - b.mx) * b.s, (p[1] - b.my) * b.s]);
+  const M = Array.from({ length: 8 }, () => new Float64Array(8)), v = new Float64Array(8);
+  const addRow = (r, y) => { for (let i = 0; i < 8; i++) { v[i] += r[i] * y; for (let j = 0; j < 8; j++) M[i][j] += r[i] * r[j]; } };
+  for (let i = 0; i < n; i++) { const [x, y] = S[i], [u, w] = D[i]; addRow([x, y, 1, 0, 0, 0, -u * x, -u * y], u); addRow([0, 0, 0, x, y, 1, -w * x, -w * y], w); }
+  // solve
+  const A = M.map((r, i) => [...r, v[i]]);
+  for (let c = 0; c < 8; c++) { let p = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r; [A[c], A[p]] = [A[p], A[c]]; if (Math.abs(A[c][c]) < 1e-12) return null; for (let r = 0; r < 8; r++) { if (r === c) continue; const f = A[r][c] / A[c][c]; for (let k = c; k < 9; k++) A[r][k] -= f * A[c][k]; } }
+  const h = A.map((r, i) => r[8] / r[i]); h.push(1);
+  // denormalize: H = Tb^-1 * Hn * Ta
+  const Hn = [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1]];
+  const Ta = [[a.s, 0, -a.s * a.mx], [0, a.s, -a.s * a.my], [0, 0, 1]], Tbi = [[1 / b.s, 0, b.mx], [0, 1 / b.s, b.my], [0, 0, 1]];
+  const mul = (X, Y) => X.map((r, i) => [0, 1, 2].map(j => r[0] * Y[0][j] + r[1] * Y[1][j] + r[2] * Y[2][j]));
+  const Hm = mul(Tbi, mul(Hn, Ta)); const k = Hm[2][2];
+  return [Hm[0][0] / k, Hm[0][1] / k, Hm[0][2] / k, Hm[1][0] / k, Hm[1][1] / k, Hm[1][2] / k, Hm[2][0] / k, Hm[2][1] / k, 1];
+}
+function mlAffine(src, dst) {
+  // least squares affine -> as homography array
+  const n = src.length; const M = Array.from({ length: 3 }, () => new Float64Array(3)), bx = new Float64Array(3), by = new Float64Array(3);
+  for (let i = 0; i < n; i++) { const r = [src[i][0], src[i][1], 1]; for (let a = 0; a < 3; a++) { bx[a] += r[a] * dst[i][0]; by[a] += r[a] * dst[i][1]; for (let b = 0; b < 3; b++) M[a][b] += r[a] * r[b]; } }
+  const solve = b => { const A = M.map((r, i) => [...r, b[i]]); for (let c = 0; c < 3; c++) { let p = c; for (let r = c + 1; r < 3; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r; [A[c], A[p]] = [A[p], A[c]]; if (Math.abs(A[c][c]) < 1e-12) return null; for (let r = 0; r < 3; r++) { if (r === c) continue; const f = A[r][c] / A[c][c]; for (let k = c; k < 4; k++) A[r][k] -= f * A[c][k]; } } return A.map((r, i) => r[3] / r[i]); };
+  const X = solve(bx), Y = solve(by); if (!X || !Y) return null;
+  return [X[0], X[1], X[2], Y[0], Y[1], Y[2], 0, 0, 1];
+}
+function mlBlocks(T) {
+  // groups of bubbles that move together (for local alignment)
+  const B = [], by = {};
+  const key = m => { const q = m.q, s = m.s; if (s === "L") return q <= 8 ? "L1" : q <= 18 ? "L3" : q <= 23 ? "L4" : "L5"; return q <= 14 ? "R2" : q <= 20 ? "R3" : q <= 29 ? "R4" : "R6"; };
+  T.mc.forEach((m, i) => { const k = key(m); if (!by[k]) { by[k] = { pts: [], qs: [], name: k }; B.push(by[k]); } by[k].qs.push(i); m.o.forEach(p => by[k].pts.push(p)); });
+  B.push({ pts: T.code.flat(), code: true });
+  B.forEach(b => { b.c = [b.pts.reduce((s, p) => s + p[0], 0) / b.pts.length, b.pts.reduce((s, p) => s + p[1], 0) / b.pts.length]; });
+  return B;
+}
+function mlFindDashes(cs, w, h) {
+  const md = Math.max(w, h);
+  const c = cs.filter(o => !o.edge && o.bw >= md * 0.006 && o.bw <= md * 0.045 && o.bw / o.bh > 1.7 && o.bw / o.bh < 4.5 && o.a / (o.bw * o.bh) > 0.55);
+  if (c.length < 20) return null;
+  // densest (nearly vertical) line of dashes: RANSAC over pairs
+  c.sort((a, b) => a.cy - b.cy);
+  let best = null;
+  for (let i = 0; i < c.length; i++) for (let j = i + 1; j < c.length; j++) {
+    const dx = c[j].cx - c[i].cx, dy = c[j].cy - c[i].cy; if (dy < md * 0.05 || Math.abs(dx) > dy * 0.4) continue;
+    const L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L, tol = Math.max(c[i].bh, c[i].bw * 0.45);
+    const grp = c.filter(o => Math.abs((o.cx - c[i].cx) * nx + (o.cy - c[i].cy) * ny) < tol);
+    if (!best || grp.length > best.length) best = grp;
+  }
+  if (!best || best.length < 20) return null;
+  // similar sizes
+  const mw = best.map(o => o.bw).sort((a, b) => a - b)[best.length >> 1];
+  best = best.filter(o => o.bw > mw * 0.55 && o.bw < mw * 1.7);
+  best.sort((a, b) => a.cy - b.cy);
+  return best;
+}
+function mlMatchDashes(det, T) {
+  // map detected dash sequence (sorted by y) onto template dash list. Returns [{t:[x,y], p:[x,y]}]
+  const ty = T.dashes.map(d => d[1]), ys = det.map(d => d.cy);
+  const diffs = []; for (let i = 1; i < ys.length; i++) diffs.push(ys[i] - ys[i - 1]);
+  diffs.sort((a, b) => a - b); const pitch = diffs[Math.floor(diffs.length * 0.3)];
+  const s0 = pitch / 11.95;
+  const cands = [];
+  for (let i = 0; i < det.length; i += 1) for (let j = 0; j < ty.length; j++) {
+    const o = ys[i] - s0 * ty[j]; let cnt = 0;
+    for (let k = 0; k < ty.length; k++) { const p = o + s0 * ty[k]; let lo = 0, hi = ys.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (ys[m] < p) lo = m + 1; else hi = m; } const cand = [lo - 1, lo].filter(x => x >= 0 && x < ys.length); if (cand.some(x => Math.abs(ys[x] - p) < pitch * 0.3)) cnt++; }
+    if (cnt >= 20 && !cands.some(c => Math.abs(c.o - o) < pitch * 0.5)) cands.push({ cnt, o, s: s0 });
+    else { const c = cands.find(c => Math.abs(c.o - o) < pitch * 0.5); if (c && cnt > c.cnt) { c.cnt = cnt; c.o = o; } }
+  }
+  cands.sort((a, b) => b.cnt - a.cnt);
+  return cands.slice(0, 4).map(best => mlRefineDash(best, det, ys, ty, T, pitch)).filter(Boolean);
+}
+function mlRefineDash(best, det, ys, ty, T, pitch) {
+  // iterative refinement with quadratic model y = a + b*t + c*t^2 (absorbs perspective)
+  let a = best.o, b = best.s, c2 = 0, pairs = [];
+  for (let it = 0; it < 3; it++) {
+    pairs = []; const used = new Set();
+    ty.forEach((t, k) => { const p = a + b * t + c2 * t * t; let bi = -1, bd = pitch * 0.35; ys.forEach((y, i) => { const d = Math.abs(y - p); if (d < bd && !used.has(i)) { bd = d; bi = i; } }); if (bi >= 0) { used.add(bi); pairs.push([k, bi]); } });
+    if (pairs.length < 6) return null;
+    // fit quadratic
+    const S = Array.from({ length: 3 }, () => new Float64Array(3)), v = new Float64Array(3);
+    pairs.forEach(([k, i]) => { const r = [1, ty[k], ty[k] * ty[k]]; for (let x = 0; x < 3; x++) { v[x] += r[x] * ys[i]; for (let y = 0; y < 3; y++) S[x][y] += r[x] * r[y]; } });
+    const A = S.map((r, i) => [...r, v[i]]); let ok = true;
+    for (let col = 0; col < 3; col++) { let p = col; for (let r = col + 1; r < 3; r++) if (Math.abs(A[r][col]) > Math.abs(A[p][col])) p = r; [A[col], A[p]] = [A[p], A[col]]; if (Math.abs(A[col][col]) < 1e-9) { ok = false; break; } for (let r = 0; r < 3; r++) { if (r === col) continue; const f = A[r][col] / A[col][col]; for (let q = col; q < 4; q++) A[r][q] -= f * A[col][q]; } }
+    if (!ok) break; a = A[0][3] / A[0][0]; b = A[1][3] / A[1][1]; c2 = A[2][3] / A[2][2];
+  }
+  return { pairs: pairs.map(([k, i]) => ({ t: T.dashes[k], p: [det[i].cx, det[i].cy] })), n: pairs.length, pitch };
+}
+
+function mlAnchor(det, cs, T) {
+  // det: dash candidates on one line (sorted by y). Find top dash via the two marks, then track downward.
+  const n = det.length; let sx = 0, sy = 0, sxy = 0, syy = 0;
+  det.forEach(o => { sx += o.cx; sy += o.cy; sxy += o.cx * o.cy; syy += o.cy * o.cy; });
+  const a = (n * sxy - sx * sy) / (n * syy - sy * sy || 1); // x = a*y + b
+  let ux = 1, uy = 0; { const L = Math.hypot(a, 1); const vx = a / L, vy = 1 / L; ux = vy; uy = -vx; } // page +x direction (perpendicular, pointing right)
+  const vx = -uy, vy = ux; // page +y direction along column
+  const gaps = []; for (let i = 1; i < n; i++) gaps.push(Math.hypot(det[i].cx - det[i - 1].cx, det[i].cy - det[i - 1].cy));
+  gaps.sort((p, q) => p - q); const pitch0 = gaps[Math.floor(gaps.length * 0.3)], s0 = pitch0 / 11.95;
+  const td = T.dashes, tm = T.marks;
+  let best = null;
+  const isMark = (o, s) => { const mw = T.markSize[0] * s, mh = T.markSize[1] * s, asp = o.bw / o.bh; return o.bw > mw * 0.5 && o.bw < mw * 1.9 && o.bh > mh * 0.45 && o.bh < mh * 2.2 && asp > 1.15 && asp < 2.3 && o.a / (o.bw * o.bh) > 0.6; };
+  for (let c = 0; c < Math.min(6, n); c++) {
+    const d0 = det[c], s = s0;
+    // mark 1 (nearer): similarity prediction
+    const m1 = tm[0], dx1 = m1[0] - td[0][0], dy1 = m1[1] - td[0][1];
+    const p1 = [d0.cx + dx1 * s * ux + dy1 * s * vx, d0.cy + dx1 * s * uy + dy1 * s * vy];
+    let o1 = null, b1 = Math.max(10 * s, dx1 * s * 0.1);
+    cs.forEach(o => { if (!isMark(o, s)) return; const dd = Math.hypot(o.cx - p1[0], o.cy - p1[1]); if (dd < b1) { b1 = dd; o1 = o; } });
+    if (!o1) continue;
+    // mark 2: extend dash0 -> mark1 direction
+    const m2 = tm[1], f = (m2[0] - td[0][0]) / dx1;
+    const p2 = [d0.cx + (o1.cx - d0.cx) * f, d0.cy + (o1.cy - d0.cy) * f];
+    let o2 = null, b2 = Math.max(10 * s, (m2[0] - m1[0]) * s * 0.08);
+    cs.forEach(o => { if (o === o1 || !isMark(o, s)) return; const dd = Math.hypot(o.cx - p2[0], o.cy - p2[1]); if (dd < b2) { b2 = dd; o2 = o; } });
+    if (!o2) continue;
+    // consistency: the line through both marks must cross the dash column at this dash (template: collinear)
+    const ex = o2.cx - o1.cx, ey = o2.cy - o1.cy, den = ex * vy - ey * vx;
+    if (Math.abs(den) < 1e-9) continue;
+    const tt = ((d0.cx - o1.cx) * vy - (d0.cy - o1.cy) * vx) / den, ix = o1.cx + ex * tt, iy = o1.cy + ey * tt;
+    const along = Math.abs((ix - d0.cx) * vx + (iy - d0.cy) * vy);
+    if (along > pitch0 * 0.4) continue;
+    const resid = b1 + b2 + along * 3, mk = [{ t: m1, p: [o1.cx, o1.cy] }, { t: m2, p: [o2.cx, o2.cy] }];
+    if (!best || resid < best.resid) best = { c, mk, resid };
+  }
+  if (!best) return null;
+  // track dashes downward using template spacing and adaptive local scale
+  const pairs = [{ t: td[0], p: [det[best.c].cx, det[best.c].cy] }];
+  let li = best.c, lk = 0, scale = s0, used = new Set([best.c]);
+  for (let k = 1; k < td.length; k++) {
+    const last = pairs[pairs.length - 1], dT = td[k][1] - last.t[1];
+    const px = last.p[0] + dT * scale * vx, py = last.p[1] + dT * scale * vy;
+    let bi = -1, bd = Math.min(12, dT) * scale * 0.35;
+    for (let i = li + 1; i < n && det[i].cy < py + 3 * pitch0; i++) { if (used.has(i)) continue; const dd = Math.hypot(det[i].cx - px, det[i].cy - py); if (dd < bd) { bd = dd; bi = i; } }
+    if (bi < 0) continue;
+    const dist = Math.hypot(det[bi].cx - last.p[0], det[bi].cy - last.p[1]);
+    scale = scale * 0.5 + (dist / dT) * 0.5; // adapt to perspective
+    pairs.push({ t: td[k], p: [det[bi].cx, det[bi].cy] }); used.add(bi); li = bi;
+  }
+  if (pairs.length < 20) return null;
+  // refit 1D projective model along the column: pos(t) = (a t + b) / (c t + 1), then reassign
+  const o0 = [det[best.c].cx, det[best.c].cy], proj = p => (p[0] - o0[0]) * vx + (p[1] - o0[1]) * vy;
+  let model = null; let cur = pairs;
+  for (let it = 0; it < 2; it++) {
+    const M = Array.from({ length: 3 }, () => new Float64Array(3)), r = new Float64Array(3);
+    cur.forEach(pr => { const t = pr.t[1], y = proj(pr.p), row = [t, 1, -t * y]; for (let i = 0; i < 3; i++) { r[i] += row[i] * y; for (let j = 0; j < 3; j++) M[i][j] += row[i] * row[j]; } });
+    const A = M.map((rw, i) => [...rw, r[i]]); let ok = true;
+    for (let col = 0; col < 3; col++) { let p = col; for (let q = col + 1; q < 3; q++) if (Math.abs(A[q][col]) > Math.abs(A[p][col])) p = q; [A[col], A[p]] = [A[p], A[col]]; if (Math.abs(A[col][col]) < 1e-12) { ok = false; break; } for (let q = 0; q < 3; q++) { if (q === col) continue; const fct = A[q][col] / A[col][col]; for (let k = col; k < 4; k++) A[q][k] -= fct * A[col][k]; } }
+    if (!ok) break;
+    const [ma, mb, mc] = A.map((rw, i) => rw[3] / rw[i]); model = t => (ma * t + mb) / (mc * t + 1);
+    const nxt = [], usedI = new Set(), py = det.map(o => proj([o.cx, o.cy]));
+    td.forEach(t => { const e = model(t[1]); let bi = -1, bd = pitch0 * 0.33; py.forEach((y, i) => { const d = Math.abs(y - e); if (d < bd && !usedI.has(i)) { bd = d; bi = i; } }); if (bi >= 0) { usedI.add(bi); nxt.push({ t, p: [det[bi].cx, det[bi].cy] }); } });
+    if (nxt.length >= 20) cur = nxt;
+  }
+  return { pairs: cur, n: cur.length, pitch: pitch0, marks: best.mk, sc: s0, resid: best.resid };
+}
+
+function mlFindMarks(cs, match, T, w, h) {
+  // predict marks using similarity from dash column, then search nearest blobs of mark size
+  const P = match.pairs, f = P[0], l = P[P.length - 1];
+  const dyT = l.t[1] - f.t[1], vx = (l.p[0] - f.p[0]) / dyT, vy = (l.p[1] - f.p[1]) / dyT; // image vector per template unit along y
+  const ux = vy, uy = -vx; // perpendicular (x axis), same scale (image y-down, template y-down)
+  const pred = m => [f.p[0] + (m[0] - f.t[0]) * ux + (m[1] - f.t[1]) * vx, f.p[1] + (m[0] - f.t[0]) * uy + (m[1] - f.t[1]) * vy];
+  const sc = Math.hypot(vx, vy), mw = T.markSize[0] * sc, mh = T.markSize[1] * sc;
+  const out = []; let resid = 0;
+  for (const m of T.marks) {
+    const [px, py] = pred(m); let best = null, bd = Math.max(6 * sc, Math.abs(m[0] - f.t[0]) * sc * 0.06);
+    cs.forEach(o => { if (o.bw < mw * 0.55 || o.bw > mw * 1.8 || o.bh < mh * 0.5 || o.bh > mh * 2 || o.a / (o.bw * o.bh) < 0.6) return; const d = Math.hypot(o.cx - px, o.cy - py); if (d < bd) { bd = d; best = o; } });
+    if (!best) return null; out.push({ t: m, p: [best.cx, best.cy] }); resid += bd;
+  }
+  return { marks: out, sc, resid };
+}
+function mlInv(H) {
+  const [a, b, c, d, e, f, g, h] = H, i = 1;
+  const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g, det = a * A + b * B + c * C;
+  return [A / det, -(b * i - c * h) / det, (b * f - c * e) / det, B / det, (a * i - c * g) / det, -(a * f - c * d) / det, C / det, -(a * h - b * g) / det, (a * e - b * d) / det].map((v, k, arr) => v / arr[8]);
+}
+function mlFindBars(binL, cs, H, T, w, h, sc) {
+  // red header bars: return template<->image corner correspondences
+  const Hi = mlInv(H), out = [];
+  for (const [x0, y0, x1, y1] of T.bars) {
+    const c = mapH(H, (x0 + x1) / 2, (y0 + y1) / 2), area = (x1 - x0) * (y1 - y0) * sc * sc;
+    let best = null, bd = 25 * sc;
+    cs.forEach(o => { if (o.a < area * 0.35 || o.a > area * 1.3) return; const d = Math.hypot(o.cx - c[0], o.cy - c[1]); if (d < bd) { bd = d; best = o; } });
+    if (!best) continue;
+    // flood-fill this component only, then take corner extremes (in template coords)
+    const corners = [null, null, null, null], sv = [Infinity, -Infinity, -Infinity, Infinity];
+    let seed = -1; { const yy = Math.round(best.cy); for (let d = 0; d < best.bw && seed < 0; d++) for (const xx of [Math.round(best.cx) + d, Math.round(best.cx) - d]) { if (xx >= 0 && xx < w && binL[yy * w + xx]) { seed = yy * w + xx; break; } } }
+    if (seed < 0) continue;
+    const seen = new Uint8Array(w * h), st = [seed]; seen[seed] = 1; let cnt = 0;
+    while (st.length) {
+      const p = st.pop(), x = p % w, y = (p - x) / w; cnt++;
+      const [u, v] = mapH(Hi, x, y);
+      const a = (u - x0) / (x1 - x0) + (v - y0) / (y1 - y0), b2 = (u - x0) / (x1 - x0) - (v - y0) / (y1 - y0);
+      if (a < sv[0]) { sv[0] = a; corners[0] = [x, y]; } if (b2 > sv[1]) { sv[1] = b2; corners[1] = [x, y]; }
+      if (a > sv[2]) { sv[2] = a; corners[2] = [x, y]; } if (b2 < sv[3]) { sv[3] = b2; corners[3] = [x, y]; }
+      if (x > 0 && binL[p - 1] && !seen[p - 1]) { seen[p - 1] = 1; st.push(p - 1); }
+      if (x < w - 1 && binL[p + 1] && !seen[p + 1]) { seen[p + 1] = 1; st.push(p + 1); }
+      if (y > 0 && binL[p - w] && !seen[p - w]) { seen[p - w] = 1; st.push(p - w); }
+      if (y < h - 1 && binL[p + w] && !seen[p + w]) { seen[p + w] = 1; st.push(p + w); }
+      if (cnt > best.a * 1.5) break;
+    }
+    if (Math.abs(cnt - best.a) > best.a * 0.2) continue; // seed landed in another component
+    if (corners.some(k => !k)) continue;
+    const tc = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    tc.forEach((t, k) => { const q = mapH(H, t[0], t[1]); if (Math.hypot(q[0] - corners[k][0], q[1] - corners[k][1]) < 30 * sc) out.push({ t, p: corners[k] }); });
+  }
+  return out;
+}
+function mlRing(gL, w, h, H, pts, r, dx, dy) {
+  // sum over bubbles: (inside + outside)/2 - outline  (bilinear, 24 directions)
+  const bil = (x, y) => { const x0 = Math.floor(x), y0 = Math.floor(y); if (x0 < 0 || y0 < 0 || x0 >= w - 1 || y0 >= h - 1) return -1; const fx = x - x0, fy = y - y0, i = y0 * w + x0; return gL[i] * (1 - fx) * (1 - fy) + gL[i + 1] * fx * (1 - fy) + gL[i + w] * (1 - fx) * fy + gL[i + w + 1] * fx * fy; };
+  let s = 0; const N = 24;
+  if (!mlRing.cs) { mlRing.cs = []; for (let k = 0; k < N; k++) { const a = k * 2 * Math.PI / N; mlRing.cs.push([Math.cos(a), Math.sin(a)]); } }
+  for (const [x, y] of pts) {
+    const [cx, cy] = mapH(H, x, y); const X = cx + dx, Y = cy + dy;
+    for (const [ca, sa] of mlRing.cs) {
+      const o = bil(X + ca * r * 0.96, Y + sa * r * 0.96), o2 = bil(X + ca * r * 1.04, Y + sa * r * 1.04), a = bil(X + ca * r * 1.3, Y + sa * r * 1.3), b = bil(X + ca * r * 0.7, Y + sa * r * 0.7);
+      if (o < 0 || o2 < 0 || a < 0 || b < 0) continue;
+      s += (a + b) / 2 - Math.min(o, o2);
+    }
+  }
+  return s;
+}
+function mlAlignBlock(gL, w, h, H, blk, rpx, R) {
+  let best = { s: -Infinity, dx: 0, dy: 0 };
+  const scan = (cx, cy, rad, step) => { for (let dy = -rad; dy <= rad; dy += step) for (let dx = -rad; dx <= rad; dx += step) { const s = mlRing(gL, w, h, H, blk.pts, rpx, cx + dx, cy + dy); if (s > best.s) best = { s, dx: cx + dx, dy: cy + dy }; } };
+  const st = Math.max(1, rpx * 0.3);
+  scan(0, 0, R, st); scan(best.dx, best.dy, st, Math.max(0.35, st / 4));
+  return best;
+}
+function mlFill(bin, w, h, H, x, y, r) { return fillAt(bin, w, h, H, x, y, r); }
+function mlAnalyze(gL0, gR0, w0, h0, T, opt = {}) {
+  const blocks = mlBlocks(T);
+  let res = null;
+  for (const rot of [0, 90, 270, 180]) {
+    const L = rotGray(gL0, w0, h0, rot), w = L.w, h = L.h, gL = L.g;
+    const binL = binarize(gL, w, h), cs = components(binL, w, h);
+    const det = mlFindDashes(cs, w, h); if (!det) continue;
+    // dash column must be on the left half
+    if (det[0].cx > w * 0.5) continue;
+    const match = mlAnchor(det, cs, T); if (!match) continue;
+    const mk = { marks: match.marks, sc: match.sc };
+    const src = match.pairs.map(p => p.t).concat(mk.marks.map(m => m.t)), dst = match.pairs.map(p => p.p).concat(mk.marks.map(m => m.p));
+    let H = mlAffine(src, dst); if (!H) continue;
+    const bars = T.bars ? mlFindBars(binL, cs, H, T, w, h, mk.sc) : [];
+    if (bars.length >= 4) { const H3 = mlDLT(src.concat(bars.map(b => b.t)), dst.concat(bars.map(b => b.p))); if (H3) H = H3; }
+    res = { rot, w, h, gL, binL, H, sc: mk.sc, match, marks: mk.marks, bars };
+    break;
+  }
+  if (!res) return null;
+  const { w, h, gL } = res;
+  const page = [[0, 0], [T.W, 0], [T.W, T.H], [0, T.H]];
+  if (opt.quick) return { rot: res.rot, w, h, quad: page.map(([x, y]) => mapH(res.H, x, y)) };
+  const rpx = T.r * res.sc;
+  // pass 1: align blocks one by one (nearest to known anchors first), refitting the homography after each
+  let src = res.match.pairs.map(p => p.t).concat(res.marks.map(m => m.t), res.bars.map(b => b.t)), dst = res.match.pairs.map(p => p.p).concat(res.marks.map(m => m.p), res.bars.map(b => b.p));
+  const order = ["code", "L1", "L3", "L4", "L5", "R2", "R3", "R4", "R6"];
+  const named = {}; blocks.forEach(b => { named[b.code ? "code" : b.name] = b; });
+  let Hc = res.H;
+  const R1 = Math.max(2, Math.round(5.2 * res.sc));
+  for (const nm of order) {
+    const b = named[nm]; if (!b) continue;
+    const a = mlAlignBlock(gL, w, h, Hc, b, rpx, R1);
+    if (typeof MLDBG !== "undefined") MLDBG.push(nm + ":" + (a.dx / res.sc).toFixed(1) + "," + (a.dy / res.sc).toFixed(1));
+    b.pts.forEach((p, i) => { if (i % 2 === 0) { const q = mapH(Hc, p[0], p[1]); src.push(p); dst.push([q[0] + a.dx, q[1] + a.dy]); } });
+    Hc = mlDLT(src, dst) || Hc;
+  }
+  let H2 = Hc;
+  // pass 2: small local re-alignment
+  const R2 = Math.max(2, Math.round(2.5 * res.sc));
+  blocks.forEach(b => { const a = mlAlignBlock(gL, w, h, H2, b, rpx, R2); b.dx = a.dx; b.dy = a.dy; });
+  // fill channel: red channel (suppresses red print)
+  const gR = rotGray(gR0, w0, h0, res.rot).g;
+  const fillBlk = (b, x, y) => { const q = mapH(H2, x, y); return darkAt(gR, w, h, q[0] + b.dx, q[1] + b.dy, rpx); };
+  const fills = T.mc.map(() => null);
+  blocks.forEach(b => { if (b.code) return; b.qs.forEach(qi => { fills[qi] = T.mc[qi].o.map(([x, y]) => fillBlk(b, x, y)); }); });
+  const cb = blocks[blocks.length - 1];
+  const codeFills = T.code.map(col => col.map(([x, y]) => fillBlk(cb, x, y)));
+  const all = fills.flat().concat(codeFills.flat()).sort((a, b) => a - b);
+  const base = all[Math.floor(all.length * 0.5)];
+  const thr = Math.min(0.62, Math.max(0.3, base + 0.27));
+  // per-block offsets for rectification of written rows: use nearest block offset (written rows not in blocks -> homography only)
+  return { dbg: { match: res.match, marks: res.marks, bars: res.bars, H0: res.H }, sc: res.sc, rot: res.rot, w, h, g: gL, H: H2, fills, codeFills, thr, base, quad: page.map(([x, y]) => mapH(H2, x, y)), blocks: blocks.map(b => ({ c: b.c, dx: b.dx, dy: b.dy, qs: b.qs, code: !!b.code })) };
+}
+function darkAt(g, w, h, cx, cy, r) {
+  // 1 - mean(inside) / paper(around): ~0 empty, ~0.7+ filled
+  const get = (x, y) => { x = Math.round(x); y = Math.round(y); return x >= 0 && y >= 0 && x < w && y < h ? g[y * w + x] : 255; };
+  let si = 0, ni = 0; const ri = r * 0.6;
+  for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) { if (i * i + j * j > 9) continue; si += get(cx + i * ri / 3, cy + j * ri / 3); ni++; }
+  const out = []; for (let k = 0; k < 16; k++) { const a = k * Math.PI / 8; out.push(get(cx + Math.cos(a) * r * 1.32, cy + Math.sin(a) * r * 1.32)); }
+  out.sort((a, b) => a - b); const paper = Math.max(40, out[Math.floor(out.length * 0.6)]);
+  return Math.max(0, Math.min(1, 1 - (si / ni) / paper));
+}
+function fillAtPx(bin, w, h, cx, cy, r) {
+  let d = 0, t = 0;
+  for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) { if (i * i + j * j > 9) continue; const px = Math.round(cx + i * r / 3), py = Math.round(cy + j * r / 3); t++; if (px >= 0 && py >= 0 && px < w && py < h && bin[py * w + px]) d++; }
+  return d / t;
+}
+function mlDecide(f, thr) {
+  let mx = -1, mi = -1; f.forEach((v, j) => { if (v > mx) { mx = v; mi = j; } });
+  if (mx < thr) return -1;
+  const strong = f.filter(v => v >= thr && v >= mx * 0.75).length;
+  return strong > 1 ? -2 : mi;
+}
+function mlCode(codeFills, thr, digits) {
+  const d = codeFills.map(f => mlDecide(f, thr));
+  return d.every(x => x >= 0) ? d.map(j => digits[j]).join("") : null;
+}
+if (typeof module !== "undefined") module.exports = Object.assign(module.exports || {}, { mlAnalyze, mlDecide, mlCode, mlBlocks });
+
+const ML = {"W":595.28,"H":841.89,"r":4.75,"dashes":[[24.71,25.45],[24.71,37.44],[24.71,49.42],[24.71,61.41],[24.71,73.4],[24.71,85.39],[24.71,97.38],[24.71,109.37],[24.71,121.35],[24.71,133.34],[24.71,145.33],[24.71,157.32],[24.71,169.31],[24.71,181.29],[24.71,193.28],[24.71,205.27],[24.71,217.26],[24.71,229.25],[24.71,254.02],[24.71,266.0],[24.71,277.97],[24.71,289.95],[24.71,301.92],[24.71,313.89],[24.71,398.65],[24.71,410.55],[24.71,422.46],[24.71,434.36],[24.71,446.27],[24.71,458.18],[24.71,470.08],[24.71,481.99],[24.71,493.9],[24.71,505.8],[24.71,517.71],[24.71,529.61],[24.71,541.52],[24.71,553.43],[24.71,565.33],[24.71,577.24],[24.71,589.15],[24.71,601.05],[24.71,612.96],[24.71,624.87],[24.71,636.77],[24.71,648.68],[24.71,660.58],[24.71,708.73],[24.71,720.71],[24.71,732.7],[24.71,744.69],[24.71,756.68],[24.71,768.67],[24.71,780.66],[24.71,792.65],[24.71,804.64],[24.71,816.63]],"dashSize":[11.1,4.3],"marks":[[181.32,25.39],[407.25,25.39]],"markSize":[9.4,6.1],"mc":[{"s":"L","q":1,"o":[[107.75,266.04],[119.94,266.04],[132.13,266.04]]},{"s":"L","q":5,"o":[[167.68,266.12],[179.87,266.12],[192.06,266.12]]},{"s":"L","q":2,"o":[[107.75,277.86],[119.94,277.86],[132.13,277.86]]},{"s":"L","q":6,"o":[[167.68,277.94],[179.87,277.94],[192.06,277.94]]},{"s":"L","q":3,"o":[[107.75,289.68],[119.94,289.68],[132.13,289.68]]},{"s":"L","q":7,"o":[[167.68,289.76],[179.87,289.76],[192.06,289.76]]},{"s":"L","q":4,"o":[[107.75,301.5],[119.94,301.5],[132.13,301.5]]},{"s":"L","q":8,"o":[[167.68,301.58],[179.87,301.58],[192.06,301.58]]},{"s":"L","q":15,"o":[[107.75,471.21],[119.69,471.21],[131.63,471.21],[143.57,471.21],[155.51,471.21],[167.45,471.21]]},{"s":"L","q":16,"o":[[107.75,482.49],[119.69,482.49],[131.63,482.49],[143.57,482.49],[155.51,482.49],[167.45,482.49]]},{"s":"L","q":17,"o":[[107.75,493.76],[119.69,493.76],[131.63,493.76],[143.57,493.76],[155.51,493.76],[167.45,493.76]]},{"s":"L","q":18,"o":[[107.75,506.44],[119.69,506.44],[131.63,506.44],[143.57,506.44],[155.51,506.44],[167.45,506.44]]},{"s":"L","q":19,"o":[[107.75,530.4],[119.73,530.4],[131.71,530.4],[143.69,530.4],[155.66,530.4],[167.64,530.4],[179.62,530.4],[191.6,530.4]]},{"s":"L","q":20,"o":[[107.75,542.26],[119.73,542.26],[131.71,542.26],[143.69,542.26],[155.66,542.26],[167.64,542.26],[179.62,542.26],[191.6,542.26]]},{"s":"L","q":21,"o":[[107.75,554.11],[119.73,554.11],[131.71,554.11],[143.69,554.11],[155.66,554.11],[167.64,554.11],[179.62,554.11],[191.6,554.11]]},{"s":"L","q":22,"o":[[107.75,565.97],[119.73,565.97],[131.71,565.97],[143.69,565.97],[155.66,565.97],[167.64,565.97],[179.62,565.97],[191.6,565.97]]},{"s":"L","q":23,"o":[[107.75,577.83],[119.73,577.83],[131.71,577.83],[143.69,577.83],[155.66,577.83],[167.64,577.83],[179.62,577.83],[191.6,577.83]]},{"s":"L","q":24,"o":[[107.77,602.03],[119.95,602.03],[132.14,602.03]]},{"s":"L","q":27,"o":[[167.22,602.03],[179.41,602.03],[191.6,602.03]]},{"s":"L","q":25,"o":[[107.77,612.88],[119.95,612.88],[132.14,612.88]]},{"s":"L","q":28,"o":[[167.22,612.88],[179.41,612.88],[191.6,612.88]]},{"s":"L","q":26,"o":[[107.77,623.73],[119.95,623.73],[132.14,623.73]]},{"s":"L","q":29,"o":[[167.22,623.73],[179.41,623.73],[191.6,623.73]]},{"s":"R","q":7,"o":[[371.18,410.27],[383.15,410.27],[395.13,410.27],[407.11,410.27],[419.09,410.27],[431.07,410.27],[443.05,410.27],[455.03,410.27],[467.0,410.27],[478.98,410.27]]},{"s":"R","q":8,"o":[[371.18,422.34],[383.15,422.34],[395.13,422.34],[407.11,422.34],[419.09,422.34],[431.07,422.34],[443.05,422.34],[455.03,422.34],[467.0,422.34],[478.98,422.34]]},{"s":"R","q":9,"o":[[371.18,434.41],[383.15,434.41],[395.13,434.41],[407.11,434.41],[419.09,434.41],[431.07,434.41],[443.05,434.41],[455.03,434.41],[467.0,434.41],[478.98,434.41]]},{"s":"R","q":10,"o":[[371.18,446.48],[383.15,446.48],[395.13,446.48],[407.11,446.48],[419.09,446.48],[431.07,446.48],[443.05,446.48],[455.03,446.48],[467.0,446.48],[478.98,446.48]]},{"s":"R","q":11,"o":[[371.18,458.55],[383.15,458.55],[395.13,458.55],[407.11,458.55],[419.09,458.55],[431.07,458.55],[443.05,458.55],[455.03,458.55],[467.0,458.55],[478.98,458.55]]},{"s":"R","q":12,"o":[[371.18,470.62],[383.15,470.62],[395.13,470.62],[407.11,470.62],[419.09,470.62],[431.07,470.62],[443.05,470.62],[455.03,470.62],[467.0,470.62],[478.98,470.62]]},{"s":"R","q":13,"o":[[371.18,482.69],[383.15,482.69],[395.13,482.69],[407.11,482.69],[419.09,482.69],[431.07,482.69],[443.05,482.69],[455.03,482.69],[467.0,482.69],[478.98,482.69]]},{"s":"R","q":14,"o":[[371.18,494.76],[383.15,494.76],[395.13,494.76],[407.11,494.76],[419.09,494.76],[431.07,494.76],[443.05,494.76],[455.03,494.76],[467.0,494.76],[478.98,494.76]]},{"s":"R","q":15,"o":[[371.18,518.36],[383.15,518.36],[395.13,518.36],[407.11,518.36],[419.09,518.36],[431.07,518.36],[443.05,518.36],[455.03,518.36]]},{"s":"R","q":16,"o":[[371.18,530.13],[383.15,530.13],[395.13,530.13],[407.11,530.13],[419.09,530.13],[431.07,530.13],[443.05,530.13],[455.03,530.13]]},{"s":"R","q":17,"o":[[371.18,541.9],[383.15,541.9],[395.13,541.9],[407.11,541.9],[419.09,541.9],[431.07,541.9],[443.05,541.9],[455.03,541.9]]},{"s":"R","q":18,"o":[[371.18,553.67],[383.15,553.67],[395.13,553.67],[407.11,553.67],[419.09,553.67],[431.07,553.67],[443.05,553.67],[455.03,553.67]]},{"s":"R","q":19,"o":[[371.18,565.44],[383.15,565.44],[395.13,565.44],[407.11,565.44],[419.09,565.44],[431.07,565.44],[443.05,565.44],[455.03,565.44]]},{"s":"R","q":20,"o":[[371.18,577.21],[383.15,577.21],[395.13,577.21],[407.11,577.21],[419.09,577.21],[431.07,577.21],[443.05,577.21],[455.03,577.21]]},{"s":"R","q":21,"o":[[370.54,601.48],[382.73,601.48],[394.92,601.48],[406.74,601.48]]},{"s":"R","q":22,"o":[[370.54,613.03],[382.73,613.03],[394.92,613.03],[406.74,613.03]]},{"s":"R","q":23,"o":[[370.54,624.58],[382.73,624.58],[394.92,624.58],[406.74,624.58]]},{"s":"R","q":24,"o":[[370.54,636.13],[382.73,636.13],[394.92,636.13],[406.74,636.13]]},{"s":"R","q":25,"o":[[442.95,601.48],[455.14,601.48],[467.33,601.48]]},{"s":"R","q":26,"o":[[442.95,612.99],[455.14,612.99],[467.33,612.99]]},{"s":"R","q":27,"o":[[442.95,624.49],[455.14,624.49],[467.33,624.49]]},{"s":"R","q":28,"o":[[442.95,635.99],[455.14,635.99],[467.33,635.99]]},{"s":"R","q":29,"o":[[442.95,647.49],[455.14,647.49],[467.33,647.49]]},{"s":"R","q":34,"o":[[370.54,780.56],[382.73,780.56],[394.92,780.56],[406.74,780.56]]},{"s":"R","q":35,"o":[[370.54,792.66],[382.73,792.66],[394.92,792.66],[406.74,792.66]]}],"wr":[{"s":"L","q":9,"b":[98.76,349.12,301.21,363.55]},{"s":"L","q":10,"b":[98.76,367.43,301.21,381.87]},{"s":"L","q":11,"b":[98.76,385.75,301.21,400.18]},{"s":"L","q":12,"b":[98.76,404.06,301.21,418.49]},{"s":"L","q":13,"b":[98.76,422.37,301.21,436.81]},{"s":"L","q":14,"b":[98.76,440.69,301.21,455.12]},{"s":"L","q":30,"b":[98.76,672.33,301.21,686.77]},{"s":"L","q":31,"b":[98.76,690.64,301.21,705.08]},{"s":"L","q":32,"b":[98.76,708.96,301.21,723.39]},{"s":"L","q":33,"b":[98.76,727.27,301.21,741.71]},{"s":"L","q":34,"b":[98.76,745.59,301.21,760.02]},{"s":"L","q":35,"b":[98.76,763.9,301.21,778.33]},{"s":"R","q":1,"b":[362.03,286.91,563.7,301.23]},{"s":"R","q":2,"b":[362.03,305.08,563.7,319.4]},{"s":"R","q":3,"b":[362.03,323.25,563.7,337.57]},{"s":"R","q":4,"b":[362.03,341.42,563.7,355.74]},{"s":"R","q":5,"b":[362.03,359.59,563.7,373.91]},{"s":"R","q":6,"b":[362.03,377.76,563.7,392.08]},{"s":"R","q":30,"b":[361.65,696.36,564.1,710.79]},{"s":"R","q":31,"b":[361.65,714.67,564.1,729.11]},{"s":"R","q":32,"b":[361.65,732.99,564.1,747.42]},{"s":"R","q":33,"b":[361.65,751.3,564.1,765.74]}],"code":[[[299.51,110.4],[299.51,122.38],[299.51,134.36],[299.51,146.34],[299.51,158.32],[299.51,170.3],[299.51,182.28],[299.51,194.26],[299.51,206.24],[299.51,218.22]],[[311.51,110.4],[311.51,122.38],[311.51,134.36],[311.51,146.34],[311.51,158.32],[311.51,170.3],[311.51,182.28],[311.51,194.26],[311.51,206.24],[311.51,218.22]],[[323.51,110.4],[323.51,122.38],[323.51,134.36],[323.51,146.34],[323.51,158.32],[323.51,170.3],[323.51,182.28],[323.51,194.26],[323.51,206.24],[323.51,218.22]],[[335.51,110.4],[335.51,122.38],[335.51,134.36],[335.51,146.34],[335.51,158.32],[335.51,170.3],[335.51,182.28],[335.51,194.26],[335.51,206.24],[335.51,218.22]],[[347.5,110.4],[347.5,122.38],[347.5,134.36],[347.5,146.34],[347.5,158.32],[347.5,170.3],[347.5,182.28],[347.5,194.26],[347.5,206.24],[347.5,218.22]]],"codeDigits":[1,2,3,4,5,6,7,8,9,0],"bars":[[51.72,232.76,306.29,249.75],[311.32,233.1,568.4,249.53]]};
+
 </script>
 
 <script>
@@ -570,6 +891,7 @@ const letter = v => v >= 0 ? LET[v] : v === -2 ? "?" : "–";
 const thrOf = t => t.thr ?? 0.45;
 function answersOf(t, b) { return b.fills.map((f, i) => b.over && b.over[i] !== undefined ? b.over[i] : decide(f, thrOf(t))); }
 function scoreOf(t, b) {
+  if (isML(t)) return mlScore(t, b);
   const a = answersOf(t, b); let ok = 0, bad = 0, emp = 0, tot = 0;
   a.forEach((v, i) => { if ((t.key[i] ?? -1) < 0) return; tot++; if (v === t.key[i]) ok++; else if (v === -1) emp++; else bad++; });
   return { a, ok, bad, emp, tot, pct: tot ? r1(ok / tot * 100) : null };
@@ -827,16 +1149,16 @@ function viewGroup(g) {
   groupTestsView(g, ts);
 }
 function groupTestsView(g, ts) {
-  let h = `<button class="btn p block" id="tNew" style="margin-bottom:14px">${IC.plus} Yangi test yaratish</button>`;
+  let h = `<div class="btns" style="margin-bottom:14px"><button class="btn p" id="tNew" style="flex:1">${IC.plus} Yangi test</button><button class="btn" id="tNewML" style="flex:1">${IC.plus} Multilevel test</button></div>`;
   if (!ts.length) h += `<div class="card empty"><div class="big">📝</div><b>Hali test yo‘q</b>Yangi test yarating: blanka chop eting, kalitni kiriting va skanerlang.</div>`;
   else h += `<div class="list">${ts.slice().reverse().map(t => {
-    const a = testAvg(t), done = new Set(t.blanks.map(b => b.sid).filter(Boolean)).size, keyN = t.key.filter(k => k >= 0).length;
+    const a = testAvg(t), done = new Set(t.blanks.map(b => b.sid).filter(Boolean)).size, ml = isML(t), keyN = ml ? t.key.mc.filter(k => k >= 0).length : t.key.filter(k => k >= 0).length, keyT = ml ? ML.mc.length : t.cfg.N;
     return `<div class="gcard" data-t="${t.id}"><div class="av" style="font-size:12px;line-height:1.1;text-align:center">${shortDate(t.date) || "—"}</div><div class="mid"><div class="nm">${esc(t.cfg.title || "Nomsiz test")}</div>
-      <div class="ds">${t.cfg.N} savol · ${t.blanks.length} ta natija${g.students.length ? ` · ${done}/${g.students.length} o‘quvchi` : ""}${keyN < t.cfg.N ? ` · <span style="color:var(--warn)">kalit ${keyN}/${t.cfg.N}</span>` : ""}</div></div>
+      <div class="ds">${ml ? "🎧📖 Multilevel" : t.cfg.N + " savol"} · ${t.blanks.length} ta natija${g.students.length ? ` · ${done}/${g.students.length} o‘quvchi` : ""}${keyN < keyT ? ` · <span style="color:var(--warn)">kalit ${keyN}/${keyT}</span>` : ""}</div></div>
       <div class="rt"><div class="pc">${a != null ? a + "%" : "—"}</div>${a != null ? gbadge(a) : ""}</div><span class="chev">${IC.chev}</span></div>`;
   }).join("")}</div>`;
   $("view").innerHTML = h;
-  $("tNew").onclick = () => newTest(g);
+  $("tNew").onclick = () => newTest(g); $("tNewML").onclick = () => newMLTest(g);
   $("view").querySelectorAll("[data-t]").forEach(el => el.onclick = () => { ui.ttab = "results"; go("#t/" + el.dataset.t); });
 }
 async function newTest(g) {
@@ -970,12 +1292,13 @@ function viewTest(t) {
   setBar({
     title: t.cfg.title || "Nomsiz test", sub: `${g ? g.name : ""} · ${fmtDate(t.date)}`, back: "#g/" + t.groupId,
     action: `<button class="ib" id="tMore" aria-label="Sozlamalar">${IC.more}</button>`,
-    tabs: [["sheet", "Blanka"], ["key", "Kalit"], ["scan", "Skaner"], ["results", `Natijalar<span class="n">${t.blanks.length}</span>`]], active: ui.ttab, onTab: k => { ui.ttab = k; viewTest(t); }
+    tabs: (isML(t) ? [] : [["sheet", "Blanka"]]).concat([["key", "Kalit"], ["scan", "Skaner"], ["results", `Natijalar<span class="n">${t.blanks.length}</span>`]]), active: isML(t) && ui.ttab === "sheet" ? "key" : ui.ttab, onTab: k => { ui.ttab = k; viewTest(t); }
   });
-  $("tMore").onclick = () => modal(`<h3>Test</h3><div class="acts" style="justify-content:space-between"><button class="btn d" id="tDel">Testni o‘chirish</button><button class="btn" data-x>Yopish</button></div>`, el => {
-    el.querySelector("[data-x]").onclick = closeModal;
+  $("tMore").onclick = () => modal(`<h3>Test</h3>${isML(t) ? `<label class="f">Test nomi<input type="text" id="mlTitle" value="${esc(t.cfg.title)}"></label><label class="f">Sana<input type="date" id="mlDate" value="${t.date}"></label>` : ""}<div class="acts" style="justify-content:space-between"><button class="btn d" id="tDel">Testni o‘chirish</button><button class="btn" data-x>Yopish</button></div>`, el => {
+    el.querySelector("[data-x]").onclick = () => { if (isML(t) && $("mlTitle")) { t.cfg.title = $("mlTitle").value.trim() || t.cfg.title; t.date = $("mlDate").value || t.date; saveTest(t); } closeModal(); viewTest(t); };
     $("tDel").onclick = () => confirmBox(`“${esc(t.cfg.title)}” testi va uning ${t.blanks.length} ta natijasi o‘chirilsinmi?`, "O‘chirish", async () => { await DB.del("tests", t.id); tests = tests.filter(x => x !== t); toast("Test o‘chirildi"); go("#g/" + t.groupId); });
   });
+  if (isML(t)) return ({ key: tabKeyML, scan: tabScan, results: tabResultsML }[ui.ttab] || tabKeyML)(t, g);
   ({ sheet: tabSheet, key: tabKey, scan: tabScan, results: tabResults }[ui.ttab] || tabSheet)(t, g);
 }
 function refreshBar() { if (cur) { const b = $("bar").querySelector('.seg [data-k="results"] .n'); if (b) b.textContent = cur.blanks.length; } }
@@ -1088,6 +1411,7 @@ function rectify(res, s, L, pxmm = 4) {
 }
 let scanErrs = [];
 function analyzeCanvas(t, canvas, srcName) {
+  if (isML(t)) return mlAnalyzeCanvas(t, canvas, srcName);
   const { data } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
   const res = analyzeGray(toGray(data, canvas.width, canvas.height), canvas.width, canvas.height, t.cfg);
   const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid, t.cfg.lay), g = G(t.groupId);
@@ -1100,10 +1424,10 @@ function analyzeCanvas(t, canvas, srcName) {
 }
 async function processCanvas(t, canvas, srcName) {
   const { items, res } = analyzeCanvas(t, canvas, srcName);
-  if (!items.length) { scanErrs.push({ e: 1, m: `“${esc(srcName)}”: blanka topilmadi. 4 ta burchak kvadrati to‘liq ko‘rinsin, blanka shu test sozlamasi bilan chop etilgan bo‘lsin.` }); return 0; }
+  if (!items.length) { scanErrs.push({ e: 1, m: isML(t) ? `“${esc(srcName)}”: Multilevel blankasi topilmadi. Varaq to‘liq kadrga sig‘sin: chap chetdagi qora chiziqchalar va tepadagi 2 ta qora belgi ko‘rinib tursin.` : `“${esc(srcName)}”: blanka topilmadi. 4 ta burchak kvadrati to‘liq ko‘rinsin, blanka shu test sozlamasi bilan chop etilgan bo‘lsin.` }); return 0; }
   t.blanks.push(...items);
-  if (res.strips.length < Math.floor(res.nc / 4)) scanErrs.push({ m: `“${esc(srcName)}”: ${res.strips.length} ta blanka o‘qildi, rasmda taxminan ${Math.floor(res.nc / 4)} ta bor. Qolganini alohida suratga oling.` });
-  return res.strips.length;
+  if (!isML(t) && res.strips.length < Math.floor(res.nc / 4)) scanErrs.push({ m: `“${esc(srcName)}”: ${res.strips.length} ta blanka o‘qildi, rasmda taxminan ${Math.floor(res.nc / 4)} ta bor. Qolganini alohida suratga oling.` });
+  return items.length;
 }
 async function handleFiles(t, files) {
   files = [...files].filter(f => f.type.startsWith("image/") || /\.(jpe?g|png|webp|bmp|gif)$/i.test(f.name)); if (!files.length) return;
@@ -1118,15 +1442,15 @@ async function handleFiles(t, files) {
 }
 function tabScan(t, g) {
   $("view").innerHTML = `<div class="card"><div class="drop" id="drop">
-      <div class="big">Blankalarni skanerlang</div><div class="mut small" style="margin-bottom:14px">Butun A4 varaq yoki qirqilgan blankalar. Galereyadan bir vaqtda ko‘p rasm tanlash mumkin.</div>
+      <div class="big">${isML(t) ? "Multilevel blankalarini skanerlang" : "Blankalarni skanerlang"}</div><div class="mut small" style="margin-bottom:14px">${isML(t) ? "Varaqni to‘liq kadrga sig‘diring: chap chetdagi qora chiziqchalar va tepadagi 2 ta qora belgi ko‘rinsin." : "Butun A4 varaq yoki qirqilgan blankalar."} Galereyadan bir vaqtda ko‘p rasm tanlash mumkin.</div>
       <div class="btns" style="justify-content:center"><button class="btn p" id="bCam">${IC.cam} Kamera bilan skanerlash</button><input type="file" id="fCam" accept="image/*" capture="environment" hidden>
       <label class="btn">${IC.img} Galereyadan<input type="file" id="fIn" accept="image/*" multiple hidden></label></div>
       <div class="small mut" style="margin-top:10px">Kamerani varaqqa tuting — blanka avtomatik taniladi, tugma bosish shart emas.</div>
       <div id="busy" class="mut small" style="display:none;margin-top:12px"></div></div>
       <div id="errs" style="margin-top:12px">${scanErrs.map(e => `<div class="${e.e ? "err" : "warnbox"}" style="margin-bottom:8px">${e.m}</div>`).join("")}</div>
-      <details style="margin-top:6px"><summary class="small mut" style="cursor:pointer">Sozlash va maslahatlar</summary>
+      ${isML(t) ? `<details style="margin-top:6px"><summary class="small mut" style="cursor:pointer">Maslahatlar</summary><ul class="small mut" style="padding-left:18px"><li>Yorug‘ joyda, varaqni tepadan, tekis qilib suratga oling.</li><li>Varaq to‘liq kadrda bo‘lsin — ayniqsa chap chetdagi chiziqchalar va tepadagi 2 ta qora belgi.</li><li>O‘quvchi “Maxsus kod”ga ID sini bo‘yaydi: 0077 → 00077.</li><li>Doirachali javobni tuzatish: kartadagi savol raqamini bosing.</li><li>Yozma javoblar: kartadagi “✍️ Yozma javoblar” tugmasi.</li></ul></details>` : `<details style="margin-top:6px"><summary class="small mut" style="cursor:pointer">Sozlash va maslahatlar</summary>
         <label class="f" style="margin-top:10px">Bo‘yalganlik chegarasi: <b id="thrV">${Math.round(thrOf(t) * 100)}%</b><input type="range" id="thr" min="0.2" max="0.8" step="0.05" value="${thrOf(t)}" style="width:240px"></label>
-        <ul class="small mut" style="padding-left:18px"><li>Yorug‘ joyda, varaqni tepadan suratga oling; 4 burchak kvadrati kadrda bo‘lsin.</li><li>Yengil belgilar o‘qilmasa — chegarani pasaytiring.</li><li>Javobni tuzatish: kartadagi savol raqamini bosing.</li><li>ID aniqlanmasa — kartadagi ro‘yxatdan o‘quvchini tanlang.</li></ul></details></div>
+        <ul class="small mut" style="padding-left:18px"><li>Yorug‘ joyda, varaqni tepadan suratga oling; 4 burchak kvadrati kadrda bo‘lsin.</li><li>Yengil belgilar o‘qilmasa — chegarani pasaytiring.</li><li>Javobni tuzatish: kartadagi savol raqamini bosing.</li><li>ID aniqlanmasa — kartadagi ro‘yxatdan o‘quvchini tanlang.</li></ul></details>`}</div>
     <div class="blanks" id="blanks"></div>`;
   $("fIn").onchange = e => { handleFiles(t, e.target.files); e.target.value = ""; };
   $("fCam").onchange = e => { handleFiles(t, e.target.files); e.target.value = ""; };
@@ -1134,11 +1458,12 @@ function tabScan(t, g) {
   ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("over"); }));
   ["dragleave", "drop"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove("over"); }));
   d.addEventListener("drop", e => handleFiles(t, e.dataTransfer.files));
-  $("thr").oninput = () => { t.thr = +$("thr").value; $("thrV").textContent = Math.round(t.thr * 100) + "%"; const LL = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid, t.cfg.lay); t.blanks.forEach(b => { if (!b.manualSid) { const id = decodeCode(b.codeFills) || decideId(b.idFills, t.thr, LL.idDigits); b.detId = id; if (id && g.students.some(s => s.id === id)) b.sid = id; } }); saveTest(t); renderBlanks(t, g); };
+  if ($("thr")) $("thr").oninput = () => { t.thr = +$("thr").value; $("thrV").textContent = Math.round(t.thr * 100) + "%"; const LL = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid, t.cfg.lay); t.blanks.forEach(b => { if (!b.manualSid) { const id = decodeCode(b.codeFills) || decideId(b.idFills, t.thr, LL.idDigits); b.detId = id; if (id && g.students.some(s => s.id === id)) b.sid = id; } }); saveTest(t); renderBlanks(t, g); };
   $("bCam").onclick = () => openCamera(t, g);
-  renderBlanks(t, g);
+  isML(t) ? renderBlanksML(t, g) : renderBlanks(t, g);
 }
 function drawOverlay(t, b) {
+  if (isML(t)) return mlOverlay(t, b);
   const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid, t.cfg.lay), c = document.createElement("canvas");
   c.width = b.canvas ? b.canvas.width : Math.round(L.W * 4); c.height = b.canvas ? b.canvas.height : Math.round(L.H * 4);
   const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); if (b.canvas) x.drawImage(b.canvas, 0, 0);
@@ -1202,6 +1527,7 @@ async function demo(t, g) {
 
 /* ---- Natijalar ---- */
 function tabResults(t, g) {
+  if (isML(t)) return tabResultsML(t, g);
   if (!t.blanks.length) { $("view").innerHTML = `<div class="card empty"><div class="big">📋</div><b>Hali natija yo‘q</b>“Skaner” bo‘limida blankalarni suratga oling.<br><br><button class="btn p" id="goScan">${IC.cam} Skanerlash</button></div>`; $("goScan").onclick = () => { ui.ttab = "scan"; viewTest(t); }; return; }
   const rows = t.blanks.map(b => ({ b, s: scoreOf(t, b), name: b.sid ? stName(g, b.sid) : null })).sort((a, b) => (b.s.pct ?? -1) - (a.s.pct ?? -1));
   const pcts = rows.map(r => r.s.pct).filter(x => x != null), a = pcts.length ? r1(avg(pcts)) : null;
@@ -1230,12 +1556,173 @@ function tabResults(t, g) {
 }
 
 
+/* ============================ MULTILEVEL (DTM javoblar varaqasi) ============================ */
+const isML = t => !!(t && t.cfg && t.cfg.type === "ml");
+const ML_SEC = { L: "Tinglab tushunish", R: "O‘qish" };
+const ML_PARTS = { L: [[1, 8, "1-qism"], [9, 14, "2-qism"], [15, 18, "3-qism"], [19, 23, "4-qism"], [24, 29, "5-qism"], [30, 35, "6-qism"]], R: [[1, 6, "1-qism"], [7, 14, "2-qism"], [15, 20, "3-qism"], [21, 29, "4-qism"], [30, 35, "6-qism"]] };
+const ML_ITEMS = (() => { const a = []; ML.mc.forEach((m, i) => a.push({ s: m.s, q: m.q, t: "mc", i, n: m.o.length })); ML.wr.forEach((w, i) => a.push({ s: w.s, q: w.q, t: "wr", i })); return a.sort((x, y) => (x.s === y.s ? 0 : x.s === "L" ? -1 : 1) || x.q - y.q); })();
+function mlAnswers(t, b) { return ML.mc.map((m, i) => b.over && b.over[i] !== undefined ? b.over[i] : mlDecide(b.fills[i], b.thr)); }
+function mlScore(t, b) {
+  const a = mlAnswers(t, b), S = { L: { ok: 0, tot: 0 }, R: { ok: 0, tot: 0 } }; let pend = 0, bad = 0, emp = 0;
+  ML.mc.forEach((m, i) => { const k = t.key.mc[i]; if (k == null || k < 0) return; S[m.s].tot++; if (a[i] === k) S[m.s].ok++; else if (a[i] === -1) emp++; else bad++; });
+  ML.wr.forEach((w, i) => { S[w.s].tot++; const v = b.wr && b.wr[i]; if (v === true) S[w.s].ok++; else if (v === false) bad++; else pend++; });
+  const ok = S.L.ok + S.R.ok, tot = S.L.tot + S.R.tot;
+  return { a, ok, bad, emp, tot, pct: tot ? r1(ok / tot * 100) : null, L: S.L, R: S.R, pend };
+}
+async function newMLTest(g) {
+  const n = groupTests(g).filter(isML).length + 1;
+  const t = { id: uid("t"), lv: 3, groupId: g.id, created: Date.now(), date: today(), cfg: { type: "ml", title: `Multilevel ${n}` }, key: { mc: Array(ML.mc.length).fill(-1), wr: Array(ML.wr.length).fill("") }, blanks: [] };
+  tests.push(t); await DB.put("tests", t); ui.ttab = "key"; go("#t/" + t.id);
+}
+function mlAnalyzeCanvas(t, canvas, srcName) {
+  const w = canvas.width, h = canvas.height, { data } = canvas.getContext("2d").getImageData(0, 0, w, h);
+  const gL = new Uint8Array(w * h), gR = new Uint8Array(w * h);
+  for (let i = 0, j = 0; i < gL.length; i++, j += 4) { gL[i] = (data[j] * 77 + data[j + 1] * 150 + data[j + 2] * 29) >> 8; gR[i] = data[j]; }
+  const r = mlAnalyze(gL, gR, w, h, ML);
+  if (!r) return { items: [], res: null };
+  const pg = rectify(r, { H: r.H }, { W: ML.W, H: ML.H }, 1.6);
+  const code = mlCode(r.codeFills, r.thr, ML.codeDigits), g = G(t.groupId);
+  const st = code && g ? g.students.find(s => +s.id === +code) : null;
+  return { items: [{ id: uid("b"), src: srcName, ts: Date.now(), img: pg.toDataURL("image/jpeg", 0.8), canvas: pg, fills: r.fills, codeFills: r.codeFills, thr: r.thr, code, detId: code, sid: st ? st.id : null, over: {}, wr: {} }], res: r };
+}
+function mlOverlay(t, b) {
+  const c = document.createElement("canvas"), W = b.canvas ? b.canvas.width : Math.round(ML.W * 1.6), H = b.canvas ? b.canvas.height : Math.round(ML.H * 1.6);
+  c.width = W; c.height = H; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, W, H); if (b.canvas) x.drawImage(b.canvas, 0, 0);
+  const k = W / ML.W, a = mlAnswers(t, b), r = ML.r * k + 2.5; x.lineWidth = 2.2;
+  const ring = (cx, cy, col, dash) => { x.strokeStyle = col; x.setLineDash(dash ? [4, 3] : []); x.beginPath(); x.arc(cx * k, cy * k, r, 0, 7); x.stroke(); x.setLineDash([]); };
+  ML.mc.forEach((m, i) => {
+    const v = a[i], kk = t.key.mc[i] ?? -1;
+    if (v >= 0) ring(...m.o[v], kk < 0 ? "#4f46e5" : v === kk ? "#15803d" : "#dc2626");
+    if (v === -2) m.o.forEach((p, j) => { if (b.fills[i][j] >= b.thr) ring(...p, "#d97706"); });
+    if (kk >= 0 && v !== kk) ring(...m.o[kk], "#15803d", true);
+  });
+  if (b.codeFills) ML.code.forEach((col, ci) => { const d = mlDecide(b.codeFills[ci], b.thr); if (d >= 0) ring(...col[d], "#4f46e5"); });
+  ML.wr.forEach((w, i) => { const v = b.wr && b.wr[i], [x0, y0, x1, y1] = w.b; x.strokeStyle = v === true ? "#15803d" : v === false ? "#dc2626" : "#d97706"; x.lineWidth = 2; x.setLineDash(v == null ? [5, 4] : []); x.strokeRect(x0 * k - 3, y0 * k - 3, (x1 - x0) * k + 6, (y1 - y0) * k + 6); x.setLineDash([]); });
+  return c;
+}
+function mlCrop(b, i) {
+  const [x0, y0, x1, y1] = ML.wr[i].b, src = b.canvas, c = document.createElement("canvas");
+  if (!src) { c.width = 10; c.height = 10; return c; }
+  const k = src.width / ML.W, pad = 3 * k, sx = x0 * k - pad, sy = y0 * k - pad, sw = (x1 - x0) * k + 2 * pad, sh = (y1 - y0) * k + 2 * pad;
+  c.width = Math.round(sw * 1.5); c.height = Math.round(sh * 1.5); const x = c.getContext("2d"); x.imageSmoothingQuality = "high"; x.drawImage(src, sx, sy, sw, sh, 0, 0, c.width, c.height); return c;
+}
+function mlMarkDlg(t, b, onDone) {
+  modal(`<h3>Yozma javoblarni tekshirish</h3><div class="small mut" style="margin-bottom:10px">Har bir javobni rasmdan ko‘rib, ✓ (to‘g‘ri) yoki ✗ (noto‘g‘ri) ni bosing.</div><div id="wrList"></div>
+    <div class="acts" style="position:sticky;bottom:-20px;background:#fff;padding:10px 0"><button class="btn" id="wrAllOk">Qolganlarini ✓</button><button class="btn p" data-x>Tayyor</button></div>`, el => {
+    const list = $("wrList");
+    const items = ML.wr.map((w, i) => ({ w, i })).sort((p, q) => (p.w.s === q.w.s ? 0 : p.w.s === "L" ? -1 : 1) || p.w.q - q.w.q);
+    let sec = "";
+    items.forEach(({ w, i }) => {
+      if (w.s !== sec) { sec = w.s; const hd = document.createElement("div"); hd.style.cssText = "font-weight:800;margin:14px 0 6px"; hd.textContent = ML_SEC[w.s]; list.appendChild(hd); }
+      const row = document.createElement("div"); row.className = "wrRow";
+      const key = (t.key.wr[i] || "").trim();
+      row.innerHTML = `<div class="wrHd"><b>${w.q}.</b><span class="mut small">${key ? "Kalit: <b style='color:var(--ink)'>" + esc(key) + "</b>" : "kalit kiritilmagan"}</span><span class="wrBtns"><button class="wb ok">✓</button><button class="wb no">✗</button></span></div>`;
+      const cv = mlCrop(b, i); cv.className = "wrImg"; row.appendChild(cv);
+      const upd = () => { const v = b.wr[i]; row.querySelector(".ok").classList.toggle("on", v === true); row.querySelector(".no").classList.toggle("on", v === false); row.classList.toggle("done", v != null); };
+      row.querySelector(".ok").onclick = () => { b.wr[i] = b.wr[i] === true ? undefined : true; if (b.wr[i] === undefined) delete b.wr[i]; upd(); saveTest(t); };
+      row.querySelector(".no").onclick = () => { b.wr[i] = b.wr[i] === false ? undefined : false; if (b.wr[i] === undefined) delete b.wr[i]; upd(); saveTest(t); };
+      upd(); list.appendChild(row);
+    });
+    $("wrAllOk").onclick = () => { ML.wr.forEach((w, i) => { if (b.wr[i] == null) b.wr[i] = true; }); saveTest(t); closeModal(); onDone && onDone(); };
+    el.querySelector("[data-x]").onclick = () => { closeModal(); onDone && onDone(); };
+  });
+}
+function tabKeyML(t) {
+  const sec = s => ML_PARTS[s].map(([a, z, nm]) => {
+    const rows = ML_ITEMS.filter(it => it.s === s && it.q >= a && it.q <= z).map(it => it.t === "mc"
+      ? `<div class="kq"><b>${it.q}.</b>${Array.from({ length: it.n }, (_, j) => `<button class="kb${t.key.mc[it.i] === j ? " on" : ""}" data-i="${it.i}" data-o="${j}">${ML_LETTERS[j]}</button>`).join("")}</div>`
+      : `<div class="kq"><b>${it.q}.</b><input type="text" class="kw" data-w="${it.i}" value="${esc(t.key.wr[it.i] || "")}" placeholder="yozma javob (ixtiyoriy)" autocapitalize="characters" style="flex:1;min-width:0;padding:6px 10px"></div>`).join("");
+    return `<div class="mlPart"><div class="mlPartHd">${nm}</div><div class="keygrid" style="margin-top:6px">${rows}</div></div>`;
+  }).join("");
+  const filled = t.key.mc.filter(k => k >= 0).length;
+  $("view").innerHTML = `<div class="note" style="margin-bottom:14px"><b>Multilevel javoblar varaqasi.</b> O‘quvchi «Maxsus kod» ustunlariga o‘z ID sini bo‘yaydi (masalan ID 0077 → <b>00077</b>). Yozma savollar skanerdan keyin rasmga qarab ✓/✗ bilan tekshiriladi.</div>
+    <div class="small mut" style="margin:0 2px 10px">Doirachali kalit: ${filled} / ${ML.mc.length}</div>
+    <div class="card"><h2>🎧 ${ML_SEC.L}</h2>${sec("L")}</div><div class="card"><h2>📖 ${ML_SEC.R}</h2>${sec("R")}</div>`;
+  $("view").querySelectorAll(".kb").forEach(b => b.onclick = () => { const i = +b.dataset.i, o = +b.dataset.o; t.key.mc[i] = t.key.mc[i] === o ? -1 : o; saveTest(t); b.parentNode.querySelectorAll(".kb").forEach(x => x.classList.toggle("on", +x.dataset.o === t.key.mc[i])); $("view").querySelector(".small.mut").textContent = `Doirachali kalit: ${t.key.mc.filter(k => k >= 0).length} / ${ML.mc.length}`; });
+  $("view").querySelectorAll(".kw").forEach(inp => inp.oninput = () => { t.key.wr[+inp.dataset.w] = inp.value.trim(); saveTest(t); });
+}
+const ML_LETTERS = "ABCDEFGHIJ";
+function renderBlanksML(t, g) {
+  const box = $("blanks"); if (!box) return; box.innerHTML = "";
+  const cnt = {}; t.blanks.forEach(b => { if (b.sid) cnt[b.sid] = (cnt[b.sid] || 0) + 1; });
+  t.blanks.slice().reverse().forEach(b => {
+    const sc = mlScore(t, b), el = document.createElement("div"); el.className = "bk";
+    const cv = mlOverlay(t, b); cv.onclick = () => zoom(cv); cv.style.maxHeight = "420px"; cv.style.objectFit = "contain"; cv.style.background = "#f4f5fb"; el.appendChild(cv);
+    let chip;
+    if (b.sid && cnt[b.sid] > 1) chip = `<span class="chip bad">⚠ Bu o‘quvchi ${cnt[b.sid]} marta skanerlangan</span>`;
+    else if (b.sid && !b.manualSid) chip = `<span class="chip ok">✓ Maxsus kod ${b.code} → ID ${b.sid}</span>`;
+    else if (b.sid) chip = `<span class="chip ok">✓ Qo‘lda tanlangan</span>`;
+    else chip = `<span class="chip warn">${b.code ? `Kod ${b.code} guruhda yo‘q` : "Maxsus kod o‘qilmadi"} — o‘quvchini tanlang</span>`;
+    const a = sc.a, bd = document.createElement("div"); bd.className = "bd";
+    const chips = s => ML.mc.map((m, i) => ({ m, i })).filter(o => o.m.s === s).sort((p, q) => p.m.q - q.m.q).map(({ m, i }) => { const v = a[i], kk = t.key.mc[i] ?? -1; const cl = v === -2 ? "mul" : v === -1 ? "emp" : kk < 0 ? "" : v === kk ? "ok" : "bad"; return `<span class="a ${cl}${b.over && b.over[i] !== undefined ? " ed" : ""}" data-i="${i}">${m.q}${v >= 0 ? ML_LETTERS[v] : v === -2 ? "?" : "–"}</span>`; }).join("");
+    bd.innerHTML = `<div class="hd"><select><option value="">— O‘quvchini tanlang —</option>${g.students.map(s => `<option value="${s.id}" ${s.id === b.sid ? "selected" : ""}>${s.id} · ${esc(s.name)}</option>`).join("")}</select>
+      <span class="score">${sc.ok}<small>/${sc.tot}${sc.pct != null ? " · " + sc.pct + "%" : ""}</small></span><button class="ib" title="O‘chirish" style="width:34px;height:34px">✕</button></div>
+      ${chip}${sc.pct != null ? " " + gbadge(sc.pct) : ""}
+      <div class="mlSc"><span>🎧 Tinglash <b>${sc.L.ok}/${sc.L.tot}</b></span><span>📖 O‘qish <b>${sc.R.ok}/${sc.R.tot}</b></span></div>
+      <button class="btn s ${sc.pend ? "p" : ""}" data-wr style="margin-top:8px">✍️ Yozma javoblar${sc.pend ? `: ${sc.pend} ta tekshirilmagan` : " — tekshirilgan ✓"}</button>
+      <div class="small mut" style="margin-top:10px">🎧 Tinglash</div><div class="ans">${chips("L")}</div>
+      <div class="small mut" style="margin-top:8px">📖 O‘qish</div><div class="ans">${chips("R")}</div>
+      <div class="small mut" style="margin-top:8px">${esc(b.src)}${b.ts ? " · " + new Date(b.ts).toLocaleString() : ""}</div>`;
+    bd.querySelector("select").onchange = e => { b.sid = e.target.value || null; b.manualSid = true; saveTest(t); renderBlanksML(t, g); };
+    bd.querySelector(".ib").onclick = () => confirmBox("Bu natija o‘chirilsinmi?", "O‘chirish", () => { t.blanks = t.blanks.filter(x => x !== b); saveTest(t); renderBlanksML(t, g); refreshBar(); });
+    bd.querySelector("[data-wr]").onclick = () => mlMarkDlg(t, b, () => renderBlanksML(t, g));
+    bd.querySelectorAll(".ans").forEach(an => an.onclick = e => { const s = e.target.closest(".a"); if (!s) return; const i = +s.dataset.i, n = ML.mc[i].o.length, c0 = mlAnswers(t, b)[i]; b.over = b.over || {}; b.over[i] = c0 < 0 ? 0 : c0 + 1 >= n ? -1 : c0 + 1; saveTest(t); renderBlanksML(t, g); });
+    el.appendChild(bd); box.appendChild(el);
+  });
+}
+function tabResultsML(t, g) {
+  if (!t.blanks.length) { $("view").innerHTML = `<div class="card empty"><div class="big">📋</div><b>Hali natija yo‘q</b>“Skaner” bo‘limida Multilevel blankalarini suratga oling.<br><br><button class="btn p" id="goScan">${IC.cam} Skanerlash</button></div>`; $("goScan").onclick = () => { ui.ttab = "scan"; viewTest(t); }; return; }
+  const rows = t.blanks.map(b => ({ b, s: mlScore(t, b), name: b.sid ? stName(g, b.sid) : null })).sort((a, b) => (b.s.pct ?? -1) - (a.s.pct ?? -1));
+  const pcts = rows.map(r => r.s.pct).filter(x => x != null), a = pcts.length ? r1(avg(pcts)) : null;
+  const aL = r1(avg(rows.map(r => r.s.L.ok))), aR = r1(avg(rows.map(r => r.s.R.ok))), pend = rows.reduce((s, r) => s + (r.s.pend ? 1 : 0), 0);
+  const missing = g.students.filter(s => !t.blanks.some(b => b.sid === s.id)), keyN = t.key.mc.filter(k => k >= 0).length;
+  let h = keyN < ML.mc.length ? `<div class="warnbox" style="margin-bottom:12px">Doirachali kalit to‘liq emas: ${keyN}/${ML.mc.length}. Belgilanmagan savollar hisobga olinmaydi.</div>` : "";
+  if (pend) h += `<div class="warnbox" style="margin-bottom:12px">✍️ ${pend} ta o‘quvchining yozma javoblari hali tekshirilmagan — “Skaner” bo‘limida ularni belgilang. Tekshirilmagan javob hozircha 0 ball.</div>`;
+  h += `<div class="kpis"><div class="kpi"><span>Topshirdi</span><b>${t.blanks.length}${g.students.length ? `<span style="font-size:14px;color:var(--mut)"> / ${g.students.length}</span>` : ""}</b></div>
+    <div class="kpi"><span>O‘rtacha</span><b>${a ?? "—"}%</b>${gbadge(a)}</div><div class="kpi"><span>🎧 Tinglash (o‘rtacha)</span><b>${aL}<span style="font-size:14px;color:var(--mut)"> / ${rows[0].s.L.tot}</span></b></div><div class="kpi"><span>📖 O‘qish (o‘rtacha)</span><b>${aR}<span style="font-size:14px;color:var(--mut)"> / ${rows[0].s.R.tot}</span></b></div></div>`;
+  h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Natijalar</h2><span class="btns">${expBtns("rx")}<button class="btn s" id="rCsv">${IC.csv} CSV</button></span></div>
+    <div class="tscroll"><table><tr><th>#</th><th>ID</th><th>O‘quvchi</th><th class="num">Tinglash</th><th class="num">O‘qish</th><th class="num">Jami</th><th class="num">%</th><th>Baho</th></tr>
+    ${rows.map((r, i) => `<tr ${r.b.sid ? `class="cl" data-s="${r.b.sid}"` : ""}><td>${i + 1}</td><td>${r.b.sid ? `<span class="idb">${r.b.sid}</span>` : ""}</td><td>${r.name ? esc(r.name) : `<span style="color:var(--warn)">aniqlanmagan</span>`}${r.s.pend ? ` <span class="small" style="color:var(--warn)">✍️${r.s.pend}</span>` : ""}</td><td class="num">${r.s.L.ok}/${r.s.L.tot}</td><td class="num">${r.s.R.ok}/${r.s.R.tot}</td><td class="num"><b>${r.s.ok}</b>/${r.s.tot}</td><td class="num"><b>${r.s.pct ?? "—"}</b></td><td>${gbadge(r.s.pct)}</td></tr>`).join("")}</table></div>
+    ${missing.length ? `<div class="small mut" style="margin-top:10px"><b>Topshirmagan (${missing.length}):</b> ${missing.map(s => `${s.id} ${esc(s.name)}`).join(", ")}</div>` : ""}</div>`;
+  const qs = s => ML_ITEMS.filter(it => it.s === s).map(it => {
+    let p = null, lab = `${it.q}`;
+    if (it.t === "mc") { const k = t.key.mc[it.i]; if (k >= 0) { p = Math.round(rows.filter(r => r.s.a[it.i] === k).length / rows.length * 100); lab += "·" + ML_LETTERS[k]; } }
+    else { const m = rows.filter(r => r.b.wr && r.b.wr[it.i] != null); if (m.length) p = Math.round(m.filter(r => r.b.wr[it.i] === true).length / m.length * 100); lab += "✍"; }
+    const cl = p == null ? "" : p >= 70 ? "g5" : p >= 40 ? "g3" : "g2";
+    return `<div class="qs ${cl}" ${p == null ? 'style="background:var(--line2)"' : ""}><b>${lab}</b>${p == null ? "—" : p + "%"}</div>`; }).join("");
+  h += `<div class="card"><h2>Savollar tahlili <small>(necha foiz to‘g‘ri topgan)</small></h2><div class="small mut" style="margin:4px 0 6px">🎧 Tinglash</div><div class="qstat">${qs("L")}</div><div class="small mut" style="margin:12px 0 6px">📖 O‘qish</div><div class="qstat">${qs("R")}</div></div>`;
+  $("view").innerHTML = h;
+  $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${g.id}/${el.dataset.s}`));
+  bindExp("rx", () => testReportSpec(t, g), `${safeName(t.cfg.title)}-natijalar`);
+  $("rCsv").onclick = () => {
+    const head = ["#", "ID", "Ism familiya", "Tinglash", "O'qish", "Jami", "Maks", "Foiz", "Baho", "Maxsus kod", ...ML_ITEMS.map(it => it.s + it.q)];
+    const body = rows.map((r, i) => [i + 1, r.b.sid || "", r.name || "aniqlanmagan", r.s.L.ok, r.s.R.ok, r.s.ok, r.s.tot, r.s.pct ?? "", grade(r.s.pct).g || "", r.b.code || "", ...ML_ITEMS.map(it => it.t === "mc" ? (r.s.a[it.i] >= 0 ? ML_LETTERS[r.s.a[it.i]] : r.s.a[it.i] === -2 ? "?" : "-") : (r.b.wr[it.i] === true ? "+" : r.b.wr[it.i] === false ? "x" : "?"))]);
+    const keyRow = ["", "", "KALIT", "", "", "", "", "", "", "", ...ML_ITEMS.map(it => it.t === "mc" ? (t.key.mc[it.i] >= 0 ? ML_LETTERS[t.key.mc[it.i]] : "") : (t.key.wr[it.i] || ""))];
+    const csv = [head, keyRow, ...body].map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(";")).join("\r\n");
+    download(`${safeName(t.cfg.title)}-natijalar.csv`, new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  };
+}
+function testReportSpecML(t, g) {
+  const rows = t.blanks.map(b => ({ b, s: mlScore(t, b), name: b.sid ? stName(g, b.sid) : null })).sort((a, b) => (b.s.pct ?? -1) - (a.s.pct ?? -1));
+  const pcts = rows.map(r => r.s.pct).filter(x => x != null), a = pcts.length ? r1(avg(pcts)) : null;
+  const missing = g.students.filter(s => !t.blanks.some(b => b.sid === s.id));
+  return {
+    title: t.cfg.title || "Multilevel", sub: `${g.name} · ${fmtDate(t.date)} · Multilevel (Tinglash + O‘qish)`,
+    kpis: [["Topshirdi", `${t.blanks.length}${g.students.length ? " / " + g.students.length : ""}`], ["O‘rtacha", a != null ? a + "%" : "—", a], ["Tinglash o‘rt.", rows.length ? `${r1(avg(rows.map(r => r.s.L.ok)))} / ${rows[0].s.L.tot}` : "—"], ["O‘qish o‘rt.", rows.length ? `${r1(avg(rows.map(r => r.s.R.ok)))} / ${rows[0].s.R.tot}` : "—"]],
+    dist: distCounts(pcts),
+    table: { title: "Natijalar", cols: [{ h: "#", w: 5 }, { h: "ID", w: 7 }, { h: "O‘quvchi", w: 30 }, { h: "Tinglash", w: 11, al: "r" }, { h: "O‘qish", w: 10, al: "r" }, { h: "Jami", w: 9, al: "r" }, { h: "%", w: 8, al: "r" }, { h: "Baho", w: 20 }],
+      rows: rows.map((r, i) => [i + 1, r.b.sid || "", r.name ? { t: r.name } : { t: "aniqlanmagan", c: "#b45309" }, `${r.s.L.ok}/${r.s.L.tot}`, `${r.s.R.ok}/${r.s.R.tot}`, { t: r.s.ok, b: 1 }, { t: r.s.pct ?? "—", b: 1 }, { g: r.s.pct }]) },
+    note: missing.length ? `Topshirmagan (${missing.length}): ${missing.map(s => s.name).join(", ")}` : "",
+    qgrid: ML_ITEMS.map(it => { let p = null; if (rows.length) { if (it.t === "mc") { const k = t.key.mc[it.i]; if (k >= 0) p = Math.round(rows.filter(r => r.s.a[it.i] === k).length / rows.length * 100); } else { const m = rows.filter(r => r.b.wr && r.b.wr[it.i] != null); if (m.length) p = Math.round(m.filter(r => r.b.wr[it.i] === true).length / m.length * 100); } } return { t: (it.s === "L" ? "T" : "O") + it.q, p }; })
+  };
+}
+
 /* ============================ LIVE CAMERA SCANNER ============================ */
 let camWorker = null;
 function getWorker() {
   if (camWorker) return camWorker;
   const src = $("core").textContent + `
-self.onmessage = e => { const d = e.data; try { const r = analyzeGray(new Uint8Array(d.g), d.w, d.h, d.cfg); self.postMessage({ id: d.id, rot: r.rot, w: r.w, h: r.h, nc: r.nc, quads: r.strips.map(s => s.quad) }); } catch (err) { self.postMessage({ id: d.id, err: String(err), quads: [] }); } };`;
+self.onmessage = e => { const d = e.data; try { if (d.cfg && d.cfg.type === "ml") { const g = new Uint8Array(d.g), r = mlAnalyze(g, g, d.w, d.h, ML, { quick: true }); self.postMessage({ id: d.id, rot: r ? r.rot : 0, w: d.w, h: d.h, nc: 0, quads: r ? [r.quad] : [] }); return; } const r = analyzeGray(new Uint8Array(d.g), d.w, d.h, d.cfg); self.postMessage({ id: d.id, rot: r.rot, w: r.w, h: r.h, nc: r.nc, quads: r.strips.map(s => s.quad) }); } catch (err) { self.postMessage({ id: d.id, err: String(err), quads: [] }); } };`;
   camWorker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
   return camWorker;
 }
@@ -1262,7 +1749,7 @@ function camInfo() { $("camInfo").innerHTML = `<b>${esc(cam.t.cfg.title || "Test
 async function openCamera(t, g) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast("Bu brauzerda jonli kamera ishlamaydi — oddiy kamera ochiladi"); $("fCam").click(); return; }
   let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } }); }
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, resizeMode: { ideal: "none" }, width: { ideal: 1920 }, height: { ideal: 1920 } } }); }
   catch (e) { toast("Kameraga ruxsat berilmadi — oddiy kamera ochiladi"); $("fCam").click(); return; }
   Object.assign(cam, { on: true, t, g, stream, busy: false, stable: 0, last: null, mode: "scan", needLost: false, lost: 0, saved: 0, items: null, seq: 0, torch: false });
   const v = $("camV"); v.srcObject = stream; $("cam").classList.add("on"); document.body.style.overflow = "hidden";
@@ -1306,7 +1793,7 @@ function camResult(e) {
   if (n && full) {
     let moved = 1;
     if (cam.last && cam.last.length === n) { const v = $("camV"), dg = Math.hypot(v.videoWidth, v.videoHeight); moved = 0; quads.forEach((q, i) => q.forEach(([a, b], j) => { moved = Math.max(moved, Math.hypot(a - cam.last[i][j][0], b - cam.last[i][j][1]) / dg); })); }
-    cam.stable = moved < 0.012 ? cam.stable + 1 : 1; cam.last = quads;
+    cam.stable = moved < (isML(cam.t) ? 0.03 : 0.012) ? cam.stable + 1 : 1; cam.last = quads;
     camDraw(quads);
     camHint(cam.stable >= 2 ? `${n} ta blanka — qimirlatmang…` : `${n} ta blanka topildi`, cam.stable >= 2);
     if (cam.stable >= 3) camCapture();
@@ -1341,6 +1828,7 @@ function camReview() {
     const note = document.createElement("div"); note.className = "small";
     const upd = () => { note.innerHTML = b.sid ? (exist.has(b.sid) ? `<span style="color:var(--warn)">⚠ Bu o‘quvchi avval skanerlangan — saqlasangiz yangisi bilan almashtiriladi</span>` : `<span style="color:var(--ok)">✓ ${b.manualSid ? "Tanlandi" : "ID " + b.sid + " avtomatik aniqlandi"}</span>`) : `<span style="color:var(--warn)">${b.detId ? "ID " + b.detId + " guruhda yo‘q" : "ID aniqlanmadi"} — o‘quvchini tanlang</span>`; };
     row.querySelector("select").onchange = e => { b.sid = e.target.value || null; b.manualSid = true; upd(); };
+    if (isML(t)) { upd(); const ml = document.createElement("div"); ml.className = "small"; ml.style.padding = "0 10px 10px"; ml.innerHTML = `🎧 Tinglash <b>${sc.L.ok}/${sc.L.tot}</b> · 📖 O‘qish <b>${sc.R.ok}/${sc.R.tot}</b> · ✍️ yozma javoblar keyin “Skaner” bo‘limida tekshiriladi`; el.appendChild(row); el.appendChild(note); el.appendChild(ml); box.appendChild(el); return; }
     upd(); el.appendChild(row); el.appendChild(note); box.appendChild(el);
   });
   $("camResTitle").textContent = `${cam.items.length} ta blanka o‘qildi`;
@@ -1466,6 +1954,7 @@ function bindExp(id, specFn, name) { $(id + "Pdf").onclick = () => exportReport(
 const distCounts = pcts => { const c = { 5: 0, 4: 0, 3: 0, 2: 0 }; pcts.forEach(p => { const g = grade(p).g; if (g) c[g]++; }); return c; };
 
 function testReportSpec(t, g) {
+  if (isML(t)) return testReportSpecML(t, g);
   const rows = t.blanks.map(b => ({ b, s: scoreOf(t, b), name: b.sid ? stName(g, b.sid) : null })).sort((a, b) => (b.s.pct ?? -1) - (a.s.pct ?? -1));
   const pcts = rows.map(r => r.s.pct).filter(x => x != null), a = pcts.length ? r1(avg(pcts)) : null;
   const missing = g.students.filter(s => !t.blanks.some(b => b.sid === s.id));
