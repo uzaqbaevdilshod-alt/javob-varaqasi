@@ -249,7 +249,7 @@ function stripLayout(N, K, perPage, idGrid, lay) {
   const maxCols = Math.max(1, Math.floor((X1 - X0) / (blockW + 2)));
   const rowsCap = single ? Math.min(rowsMax, Math.max(25, Math.ceil(N / maxCols))) : rowsMax;
   let cols = Math.ceil(N / rowsCap);
-  const fits = cols <= maxCols && !noRoom;
+  const fits = cols <= maxCols && !noRoom && avail >= 0;
   cols = Math.max(1, Math.min(cols, maxCols));
   const rows = Math.ceil(N / cols);
   const rowH = rows > 1 ? Math.min(single ? 8 : 7.5, avail / (rows - 1)) : 0;
@@ -594,19 +594,18 @@ function stripSVG(cfg, L, opt = {}) {
   for (const [x, y] of L.markers) s += `<rect x="${x - L.MK / 2}" y="${y - L.MK / 2}" width="${L.MK}" height="${L.MK}" fill="#000"/>`;
   s += `<rect x="${L.orient[0] - L.orientS / 2}" y="${L.orient[1] - L.orientS / 2}" width="${L.orientS}" height="${L.orientS}" fill="#000"/>`;
   if (L.single) {
-    s += `<text x="105" y="24" font-size="6.5" font-weight="bold" text-anchor="middle" ${F}>${esc(cfg.title || "JAVOB VARAQASI")}</text>`;
+    s += `<text x="105" y="24" font-size="6.5" font-weight="bold" text-anchor="middle" ${F}>JAVOB VARAQASI</text>`;
     s += `<text x="16" y="38" font-size="4" ${F}>Ism, familiya:</text><line x1="43" y1="38.6" x2="134" y2="38.6" stroke="#000" stroke-width="0.3"/>`;
     s += `<text x="16" y="47" font-size="4" ${F}>Guruh:</text><line x1="29" y1="47.6" x2="80" y2="47.6" stroke="#000" stroke-width="0.3"/>`;
     s += `<text x="84" y="47" font-size="4" ${F}>Sana:</text><line x1="95" y1="47.6" x2="134" y2="47.6" stroke="#000" stroke-width="0.3"/>`;
     if (opt.groupName) s += `<text x="31" y="46.6" font-size="3.6" ${F}>${esc(opt.groupName)}</text>`;
-    if (opt.date) s += `<text x="97" y="46.6" font-size="3.6" ${F}>${esc(fmtDate(opt.date))}</text>`;
     if (person) s += `<text x="45" y="37.8" font-size="4.2" font-weight="bold" ${F}>${esc(person.name)}</text>`;
     s += `<text x="105" y="56" font-size="3" fill="#555" text-anchor="middle" ${F}>To‘g‘ri javob doirachasini ruchka bilan to‘liq bo‘yang. Burchakdagi qora kvadratlar ustiga yozmang.</text>`;
   } else {
     s += `<text x="22" y="10.2" font-size="3.8" font-style="italic" ${F}>Ism, familiya</text>`;
     s += `<line x1="46" y1="10.8" x2="134" y2="10.8" stroke="#000" stroke-width="0.3"/>`;
     if (person) s += `<text x="48" y="10" font-size="3.8" font-weight="bold" ${F}>${esc(person.name)}</text>`;
-    const sub = [cfg.title, opt.groupName, opt.date ? fmtDate(opt.date) : ""].filter(Boolean).join(" · ");
+    const sub = "";
     if (sub) s += `<text x="90" y="14.6" font-size="2.5" fill="#555" text-anchor="middle" ${F}>${esc(sub)}</text>`;
   }
   // printed ID code (only on named blanks)
@@ -616,7 +615,7 @@ function stripSVG(cfg, L, opt = {}) {
   }
   // ID grid (optional)
   const [lx, ly] = L.idLabel;
-  if (L.idGrid) s += `<text x="${lx}" y="${ly}" font-size="${L.single ? 3.4 : 2.8}" font-weight="bold" ${F}>ID raqam</text>`;
+  if (L.idGrid && L.idRows.length) s += `<text x="${lx}" y="${ly}" font-size="${L.single ? 3.4 : 2.8}" font-weight="bold" ${F}>ID raqam</text>`;
   if (L.idGrid && L.idBoxes.length) L.idBoxes.forEach(([x, y]) => { s += `<rect x="${x - 2.1}" y="${y - 2.3}" width="4.2" height="4.6" fill="none" stroke="#9aa1ad" stroke-width="0.25"/>`; });
   const dsz = L.idR < 1.7 ? 1.9 : L.idR < 2 ? 2.1 : 2.4;
   L.idRows.forEach((row, ri) => row.forEach(([x, y], j) => {
@@ -920,7 +919,7 @@ function tabSheet(t, g) {
       <label class="f">Savollar soni<input type="number" id="cN" min="1" max="200" value="${c.N}" ${locked ? "disabled" : ""}></label>
       <label class="f">Variantlar<select id="cK" ${locked ? "disabled" : ""}><option value="3">A–C</option><option value="4">A–D</option><option value="5">A–E</option></select></label>
       <label class="f grow">Blanka turi<select id="cMode" ${locked ? "disabled" : ""}><option value="1">1 varaq = 1 o‘quvchi</option><option value="m">1 varaqda bir nechta</option></select></label>
-      <label class="f" id="cPw">A4 da nechta<select id="cP" ${locked ? "disabled" : ""}><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+      <label class="f" id="cPw">A4 da nechta<select id="cP" ${locked ? "disabled" : ""}></select></label>
     </div>
     <label style="display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:14px;cursor:pointer"><input type="checkbox" id="cGrid" ${c.idGrid ? "checked" : ""} ${locked ? "disabled" : ""} style="width:20px;height:20px;margin:1px 0 0;accent-color:var(--acc)"><span><b>ID doirachalari</b> <span class="mut">— bo‘sh blankada o‘quvchi 4 xonali ID sini o‘zi bo‘yaydi (blankaning chap tomonida). Ismli blankalar uchun shart emas.</span></span></label>
     <p id="cMsg" class="small mut" style="margin:10px 0 0"></p>
@@ -933,7 +932,16 @@ function tabSheet(t, g) {
       </div>
       <div class="note"><b>Ismli blankalar</b> — har bir o‘quvchining ismi va kichik ID kodi (yuqoridagi mayda kvadratchalar) bosiladi, skanerda o‘quvchi avtomatik aniqlanadi.<br><b>Bo‘sh blanka</b> — ${c.idGrid ? (c.lay === 2 ? "o‘quvchi chap tomondagi 4 ta ustunga ID sining har bir raqamini bo‘yaydi (masalan 0127: 1-ustunda 0, 2-da 1, 3-da 2, 4-da 7)." : "o‘quvchi “ID raqam” qatorlariga o‘z ID sini belgilaydi.") : "skanerlagach o‘quvchini ro‘yxatdan tanlaysiz (yoki “ID doirachalari”ni yoqing)."}</div>
       <div class="preview" id="prev" style="margin-top:12px"></div></div>`;
-  $("cK").value = c.K; $("cMode").value = c.P === 1 ? "1" : "m"; if (c.P > 1) $("cP").value = c.P; $("cPw").style.display = c.P === 1 ? "none" : "";
+  // A4 dagi blankalar soni: faqat sig‘adiganlari
+  const fitP = () => { const r = []; for (let p = 2; p <= 14; p++) if (stripLayout(c.N, c.K, p, c.idGrid, c.lay).fits) r.push(p); return r; };
+  const fillP = () => {
+    const ps = fitP(), sel = $("cP");
+    sel.innerHTML = ps.length ? ps.map(p => `<option value="${p}">${p} ta</option>`).join("") : `<option value="">sig‘maydi</option>`;
+    if (c.P > 1 && ps.includes(c.P)) sel.value = c.P; else if (ps.length) sel.value = ps.filter(p => p <= Math.max(c.P, 2)).pop() || ps[0];
+    const mOpt = $("cMode").querySelector('option[value="m"]'); mOpt.disabled = !ps.length; mOpt.textContent = ps.length ? `1 varaqda bir nechta (${ps[ps.length - 1]} tagacha)` : "1 varaqda bir nechta (sig‘maydi)";
+    return ps;
+  };
+  $("cK").value = c.K; $("cMode").value = c.P === 1 ? "1" : "m"; fillP(); $("cPw").style.display = c.P === 1 ? "none" : "";
   const render = () => {
     const L = stripLayout(c.N, c.K, c.P, c.idGrid, c.lay);
     const sample = g && g.students[0] ? null : null;
@@ -945,7 +953,8 @@ function tabSheet(t, g) {
   render();
   const upd = () => {
     if (!locked) {
-      c.N = Math.max(1, Math.min(200, parseInt($("cN").value) || c.N)); c.K = +$("cK").value; c.P = $("cMode").value === "1" ? 1 : +$("cP").value; c.idGrid = $("cGrid").checked;
+      c.N = Math.max(1, Math.min(200, parseInt($("cN").value) || c.N)); c.K = +$("cK").value; c.idGrid = $("cGrid").checked;
+      if ($("cMode").value === "1") c.P = 1; else { c.P = +$("cP").value || c.P; const ps = fillP(); if (!ps.includes(c.P)) { if (ps.length) c.P = +$("cP").value; else { c.P = 1; $("cMode").value = "1"; } } }
       $("cPw").style.display = c.P === 1 ? "none" : "";
       t.key = Array.from({ length: c.N }, (_, i) => (t.key[i] ?? -1) < c.K ? (t.key[i] ?? -1) : -1);
     }
