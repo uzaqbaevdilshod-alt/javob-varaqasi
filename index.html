@@ -2,7 +2,7 @@
 <html lang="uz">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#4f46e5">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
@@ -52,7 +52,10 @@ main{padding-top:16px}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
 .grow{flex:1}
 label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink2);font-weight:600}
-input[type=text],input[type=number],input[type=date],select,textarea{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;min-width:0;font-size:15px;outline:none}
+html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;min-width:0;font-size:16px;outline:none}
+.search{position:relative}.search input{width:100%;padding-left:40px}.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--mut)}
+.srow mark{background:#fef08a;color:inherit;border-radius:3px;padding:0 1px}
 input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-s)}
 input[type=number]{width:100px}
 textarea{width:100%;min-height:150px;resize:vertical}
@@ -158,7 +161,7 @@ tr.cl{cursor:pointer}tr.cl:hover td{background:#fafbfe}
 .bk canvas{width:100%;display:block;border-bottom:1px solid var(--line2);cursor:zoom-in}
 .bk .bd{padding:12px 14px}
 .bk .hd{display:flex;gap:8px;align-items:center}
-.bk .hd select{flex:1;padding:8px 10px}
+.bk .hd select{flex:1;padding:8px 10px;font-size:16px}
 .score{font-weight:800;font-size:18px;white-space:nowrap}
 .score small{font-weight:600;color:var(--mut);font-size:13px}
 .chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 8px;border-radius:8px;margin-top:8px}
@@ -506,6 +509,7 @@ const IC = {
   cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   img: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>',
   users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 4.5a3.5 3.5 0 010 7M18 14.6c2 .7 3.2 2.5 3.5 5.4"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
   csv: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg>',
 };
 const LOGO = '<svg class="logo" viewBox="0 0 34 34"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><rect width="34" height="34" rx="10" fill="url(#lg)"/><rect x="9" y="7" width="16" height="20" rx="2" fill="#fff"/><circle cx="13.5" cy="13" r="1.6" fill="#1e1b4b"/><circle cx="17.5" cy="13" r="1.6" fill="none" stroke="#a5adbd" stroke-width=".8"/><circle cx="13.5" cy="18" r="1.6" fill="none" stroke="#a5adbd" stroke-width=".8"/><circle cx="17.5" cy="18" r="1.6" fill="#1e1b4b"/><circle cx="23" cy="23" r="5" fill="#16a34a"/><path d="M20.8 23l1.5 1.5 3-3" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>';
@@ -547,6 +551,18 @@ const groupTests = g => tests.filter(t => t.groupId === g.id).sort((a, b) => (a.
 const stName = (g, sid) => (g.students.find(s => s.id === sid) || {}).name;
 const allIds = () => new Set(groups.flatMap(g => g.students.map(s => s.id)));
 function nextId(g, taken) { taken = taken || allIds(); for (let i = 1; i < 10000; i++) { const id = String(i).padStart(4, "0"); if (!taken.has(id) && !g.students.some(s => s.id === id)) return id; } return null; }
+const norm = s => String(s || "").toLowerCase().replace(/[‘’ʻʼ`´']/g, "'").replace(/\s+/g, " ").trim();
+function matchStudent(s, q) { q = norm(q); if (!q) return true; const n = norm(s.name); return s.id.includes(q.replace(/\D/g, "") || "\u0000") || n.includes(q) || q.split(" ").every(w => n.includes(w)); }
+function hl(text, q) { q = norm(q); const t = esc(text); if (!q || /^\d+$/.test(q)) return t; const i = norm(text).indexOf(q); return i < 0 ? t : esc(text.slice(0, i)) + "<mark>" + esc(text.slice(i, i + q.length)) + "</mark>" + esc(text.slice(i + q.length)); }
+function hlId(id, q) { const d = norm(q).replace(/\D/g, ""); if (!d) return id; const i = id.indexOf(d); return i < 0 ? id : id.slice(0, i) + "<mark>" + id.slice(i, i + d.length) + "</mark>" + id.slice(i + d.length); }
+// returns [id, error]
+function checkId(raw, g, own) {
+  const v = String(raw || "").trim(); if (!v) return [null, null];
+  if (!/^\d{1,4}$/.test(v)) return [null, "ID faqat raqamlardan iborat bo‘lsin (1–4 xona)"];
+  const id = v.padStart(4, "0"); if (id === "0000") return [null, "ID 0001 dan 9999 gacha bo‘lishi kerak"];
+  if (id !== own && allIds().has(id)) { const og = groups.find(x => x.students.some(y => y.id === id)); return [null, `ID ${id} band${og ? " (" + og.name + ")" : ""}`]; }
+  return [id, null];
+}
 const sortStudents = g => g.students.sort((a, b) => a.id.localeCompare(b.id));
 
 /* ============================ SCORING ============================ */
@@ -738,6 +754,7 @@ function viewHome() {
   const nSt = groups.reduce((s, g) => s + g.students.length, 0), nRes = tests.reduce((s, t) => s + t.blanks.length, 0);
   let h = `<div class="hero"><h2>Assalomu alaykum!</h2><p>Guruh tanlang yoki yangisini oching.</p>
     <div class="hs"><div><b>${groups.length}</b><span>guruh</span></div><div><b>${nSt}</b><span>o‘quvchi</span></div><div><b>${tests.length}</b><span>test</span></div><div><b>${nRes}</b><span>tekshirilgan</span></div></div></div>
+    ${nSt ? `<div class="search" style="margin-top:14px">${IC.search}<input type="search" id="hQ" placeholder="O‘quvchini qidirish: ism yoki ID" value="${esc(ui.hq || "")}" autocomplete="off"></div><div id="hRes"></div>` : ""}
     <div class="sec"><h3>Guruhlar</h3><button class="btn s p" id="hNew">${IC.plus} Guruh ochish</button></div>`;
   if (!groups.length) h += `<div class="card empty"><div class="big">👥</div><b>Hali guruh yo‘q</b>Sinf yoki guruh oching, o‘quvchilarni kiriting — har biriga 4 xonali ID beriladi.<br><br><button class="btn p" id="hNew2">${IC.plus} Birinchi guruhni ochish</button></div>`;
   else h += `<div class="list">${groups.slice().sort((a, b) => a.name.localeCompare(b.name)).map(g => {
@@ -746,7 +763,15 @@ function viewHome() {
       <div class="rt hide-s">${spark(avgs)}</div><div class="rt"><div class="pc">${a != null ? a + "%" : "—"}</div>${a != null ? gbadge(a) : ""}</div><span class="chev">${IC.chev}</span></div>`;
   }).join("")}</div>`;
   $("view").innerHTML = h;
-  $("view").querySelectorAll("[data-g]").forEach(el => el.onclick = () => { ui.gtab = "tests"; go("#g/" + el.dataset.g); });
+  $("view").querySelectorAll(".gcard[data-g]").forEach(el => el.onclick = () => { ui.gtab = "tests"; ui.sq = ""; go("#g/" + el.dataset.g); });
+  const hRender = () => {
+    const q = ui.hq || "", box = $("hRes"); if (!box) return;
+    if (!norm(q)) { box.innerHTML = ""; return; }
+    const res = groups.flatMap(g => g.students.filter(s => matchStudent(s, q)).map(s => ({ g, s }))).slice(0, 40);
+    box.innerHTML = `<div class="card" style="padding:6px 14px;margin-top:10px">${res.length ? res.map(({ g, s }) => { const sm = studentSummary(g, s.id); return `<div class="srow" data-g="${g.id}" data-s="${s.id}"><span class="idb">${hlId(s.id, q)}</span><span class="nm">${hl(s.name, q)}<small>${esc(g.name)}</small></span>${sm.n ? `<span class="pc">${sm.avg}%</span>${gbadge(sm.avg)}` : ""}<span class="chev">${IC.chev}</span></div>`; }).join("") : `<div class="empty" style="padding:18px">“${esc(q)}” bo‘yicha o‘quvchi topilmadi</div>`}</div>`;
+    box.querySelectorAll(".srow").forEach(el => el.onclick = () => go(`#s/${el.dataset.g}/${el.dataset.s}`));
+  };
+  if ($("hQ")) { $("hQ").oninput = () => { ui.hq = $("hQ").value; hRender(); }; hRender(); }
   ($("hNew") || {}).onclick = newGroupDlg; if ($("hNew2")) $("hNew2").onclick = newGroupDlg;
 }
 function newGroupDlg() {
@@ -759,20 +784,21 @@ function newGroupDlg() {
     $("ngOk").onclick = async () => {
       const name = $("ngName").value.trim(); if (!name) { $("ngName").focus(); return; }
       const g = { id: uid("g"), name, created: Date.now(), students: [] };
-      addStudentsFromText(g, $("ngList").value);
-      groups.push(g); await saveGroup(g); closeModal(); ui.gtab = g.students.length ? "students" : "students"; go("#g/" + g.id);
+      addStudentsFromText(g, $("ngList").value); const ch = addStudentsFromText.changed;
+      groups.push(g); await saveGroup(g); closeModal(); if (ch.length) setTimeout(() => toast(`Band ID lar o‘rniga yangisi berildi: ${ch.join(", ")}`), 400); ui.gtab = g.students.length ? "students" : "students"; go("#g/" + g.id);
     };
   });
 }
 // lines: "Familiya Ism", "1234 Familiya Ism" or "Familiya Ism;1234" (4-digit ID optional)
 function addStudentsFromText(g, text) {
-  let n = 0; const taken = allIds();
+  let n = 0; const taken = allIds(); addStudentsFromText.changed = [];
   text.split(/\r?\n/).forEach(line => {
     line = line.trim(); if (!line) return; let id = null, m;
     if ((m = line.match(/^(\d{4})[\s;,\t]+(.+)$/))) { id = m[1]; line = m[2]; }
     else if ((m = line.match(/^(.+?)[\s;,\t]+(\d{4})$/))) { id = m[2]; line = m[1]; }
     const name = line.replace(/^\s*\d{1,3}[.)\s-]+/, "").replace(/[;,\t]+$/, "").trim(); if (!name) return;
-    if (!id || id === "0000" || taken.has(id) || g.students.some(s => s.id === id)) id = nextId(g, taken);
+    if (id && (id === "0000" || taken.has(id) || g.students.some(s => s.id === id))) { addStudentsFromText.changed.push(`${name}: ${id} band`); id = null; }
+    if (!id) id = nextId(g, taken);
     if (id) { g.students.push({ id, name }); taken.add(id); n++; }
   });
   sortStudents(g); return n;
@@ -780,6 +806,7 @@ function addStudentsFromText(g, text) {
 
 /* ============================ GROUP ============================ */
 function viewGroup(g) {
+  if (ui.sqG !== g.id) { ui.sq = ""; ui.sqG = g.id; }
   const ts = groupTests(g);
   setBar({
     title: g.name, sub: `${g.students.length} o‘quvchi · ${ts.length} test`, back: "#",
@@ -820,34 +847,46 @@ async function newTest(g) {
 }
 function groupStudents(g) {
   const rows = g.students.map(s => ({ s, sm: studentSummary(g, s.id) }));
-  let h = `<div class="card"><div class="row"><label class="f grow">Yangi o‘quvchi<input type="text" id="sName" placeholder="Familiya Ism"></label><button class="btn p" id="sAdd">${IC.plus} Qo‘shish</button></div>
+  let h = `<div class="card"><div class="row"><label class="f grow">Yangi o‘quvchi<input type="text" id="sName" placeholder="Familiya Ism"></label><label class="f">ID (ixtiyoriy)<input type="text" id="sId" inputmode="numeric" maxlength="4" placeholder="avto" style="width:96px"></label><button class="btn p" id="sAdd">${IC.plus} Qo‘shish</button></div>
     <div class="btns" style="margin-top:10px"><button class="btn s" id="sBulk">${IC.users} Ro‘yxatdan qo‘shish</button><button class="btn s" id="sCards">${IC.dl} ID ro‘yxatini yuklab olish</button></div></div>`;
   if (!g.students.length) h += `<div class="card empty"><div class="big">🧑‍🎓</div><b>O‘quvchilar yo‘q</b>Ism-familiyalarni kiriting — har biriga 4 xonali ID beriladi (0001, 0002…). ID ni o‘quvchi blankadagi doirachalarda belgilaydi yoki ismli blanka chop etasiz.</div>`;
-  else h += `<div class="card" style="padding:6px 14px">${rows.map(({ s, sm }) => `<div class="srow" data-s="${s.id}"><span class="idb">${s.id}</span><span class="nm">${esc(s.name)}${sm.n ? `<small>${sm.n} ta test</small>` : ""}</span>${sm.n ? `<span class="pc">${sm.avg}%</span>${gbadge(sm.avg)}` : `<span class="small mut">natija yo‘q</span>`}<button class="ib" data-e="${s.id}" aria-label="Tahrirlash" style="width:34px;height:34px"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>`).join("")}</div>`;
+  else h += `<div class="search" style="margin-bottom:10px">${IC.search}<input type="search" id="sQ" placeholder="Ism yoki ID bo‘yicha qidirish" value="${esc(ui.sq || "")}" autocomplete="off"></div><div class="card" style="padding:6px 14px" id="sList"></div>`;
+  const rowHtml = ({ s, sm }, q) => `<div class="srow" data-s="${s.id}"><span class="idb">${hlId(s.id, q)}</span><span class="nm">${hl(s.name, q)}${sm.n ? `<small>${sm.n} ta test</small>` : ""}</span>${sm.n ? `<span class="pc">${sm.avg}%</span>${gbadge(sm.avg)}` : `<span class="small mut">natija yo‘q</span>`}<button class="ib" data-e="${s.id}" aria-label="Tahrirlash" style="width:34px;height:34px"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>`;
   $("view").innerHTML = h;
-  const add = async () => { const n = $("sName").value.trim(); if (!n) return; const id = nextId(g); if (!id) { toast("Bo‘sh ID qolmadi"); return; } g.students.push({ id, name: n }); sortStudents(g); await saveGroup(g); viewGroup(g); toast(`${n} — ID ${id}`); setTimeout(() => $("sName") && $("sName").focus(), 30); };
-  $("sAdd").onclick = add; $("sName").onkeydown = e => { if (e.key === "Enter") add(); };
+  const renderList = () => {
+    const q = ui.sq || "", box = $("sList"); if (!box) return;
+    const list = rows.filter(r => matchStudent(r.s, q));
+    box.innerHTML = list.length ? list.map(r => rowHtml(r, q)).join("") : `<div class="empty" style="padding:20px">“${esc(q)}” bo‘yicha o‘quvchi topilmadi</div>`;
+    box.querySelectorAll("[data-s]").forEach(el => el.onclick = e => { if (e.target.closest("[data-e]")) return; go(`#s/${g.id}/${el.dataset.s}`); });
+    box.querySelectorAll("[data-e]").forEach(el => el.onclick = () => editStudent(g, el.dataset.e));
+  };
+  if ($("sQ")) { $("sQ").oninput = () => { ui.sq = $("sQ").value; renderList(); }; renderList(); }
+  const add = async () => {
+    const n = $("sName").value.trim(); if (!n) { $("sName").focus(); return; }
+    let [id, err] = checkId($("sId").value, g); if (err) { toast(err); $("sId").focus(); return; }
+    id = id || nextId(g); if (!id) { toast("Bo‘sh ID qolmadi"); return; }
+    g.students.push({ id, name: n }); sortStudents(g); await saveGroup(g); ui.sq = ""; viewGroup(g); toast(`${n} — ID ${id}`); setTimeout(() => $("sName") && $("sName").focus(), 30);
+  };
+  $("sAdd").onclick = add; $("sName").onkeydown = e => { if (e.key === "Enter") add(); }; $("sId").onkeydown = e => { if (e.key === "Enter") add(); };
   $("sBulk").onclick = () => modal(`<h3>Ro‘yxatdan qo‘shish</h3><label class="f">Har qatorda bitta o‘quvchi (Excel yoki Word’dan nusxalab qo‘yish mumkin). ID bilan: “1234 Familiya Ism”<textarea id="bList"></textarea></label><div class="acts"><button class="btn" data-x>Bekor qilish</button><button class="btn p" id="bOk">Qo‘shish</button></div>`, el => {
     el.querySelector("[data-x]").onclick = closeModal;
-    $("bOk").onclick = async () => { const n = addStudentsFromText(g, $("bList").value); await saveGroup(g); closeModal(); viewGroup(g); toast(`${n} ta o‘quvchi qo‘shildi`); };
+    $("bOk").onclick = async () => { const n = addStudentsFromText(g, $("bList").value); await saveGroup(g); closeModal(); viewGroup(g); const ch = addStudentsFromText.changed; toast(`${n} ta o‘quvchi qo‘shildi${ch.length ? ". Band ID lar o‘rniga yangisi berildi: " + ch.join(", ") : ""}`); };
   });
   $("sCards").onclick = () => { if (!g.students.length) return; const csv = ["ID;Ism familiya", ...g.students.map(s => `${s.id};${s.name}`)].join("\r\n"); download(`${safeName(g.name)}-ID-royxati.csv`, new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" })); };
-  $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = e => { if (e.target.closest("[data-e]")) return; go(`#s/${g.id}/${el.dataset.s}`); });
-  $("view").querySelectorAll("[data-e]").forEach(el => el.onclick = () => editStudent(g, el.dataset.e));
+
 }
 function editStudent(g, sid) {
   const s = g.students.find(x => x.id === sid); if (!s) return;
-  modal(`<h3>O‘quvchi</h3><label class="f">Ism familiya<input type="text" id="esName" value="${esc(s.name)}"></label><label class="f">ID (4 xonali, 0001–9999)<input type="text" id="esId" value="${s.id}" inputmode="numeric" maxlength="4" style="width:120px"></label>
+  modal(`<h3>O‘quvchi</h3><label class="f">Ism familiya<input type="text" id="esName" value="${esc(s.name)}"></label><label class="f">ID (1–4 xonali raqam, masalan 25 → 0025)<input type="text" id="esId" value="${s.id}" inputmode="numeric" maxlength="4" style="width:120px"></label>
     <div class="acts" style="justify-content:space-between"><button class="btn d" id="esDel">O‘chirish</button><span class="btns"><button class="btn" data-x>Bekor</button><button class="btn p" id="esOk">Saqlash</button></span></div>`, el => {
     el.querySelector("[data-x]").onclick = closeModal;
     $("esOk").onclick = async () => {
-      const name = $("esName").value.trim(), id = $("esId").value.trim().padStart(4, "0");
-      if (!/^\d{4}$/.test(id) || id === "0000") { toast("ID 0001 dan 9999 gacha bo‘lishi kerak"); return; }
-      if (id !== s.id && allIds().has(id)) { const og = groups.find(x => x.students.some(y => y.id === id)); toast(`ID ${id} band (${og ? og.name : ""})`); return; }
+      const name = $("esName").value.trim(); const [id, err] = checkId($("esId").value, g, s.id);
+      if (err || !id) { toast(err || "ID ni kiriting"); return; }
       if (id !== s.id) groupTests(g).forEach(t => { t.blanks.forEach(b => { if (b.sid === s.id) b.sid = id; }); saveTest(t); });
-      if (name) s.name = name; s.id = id; sortStudents(g); await saveGroup(g); closeModal(); viewGroup(g);
+      if (name) s.name = name; s.id = id; sortStudents(g); await saveGroup(g); closeModal(); if (location.hash.startsWith("#s/")) go(`#s/${g.id}/${id}`); else viewGroup(g);
     };
-    $("esDel").onclick = () => confirmBox(`${esc(s.name)} o‘chirilsinmi? Uning natijalari testlarda “aniqlanmagan” bo‘lib qoladi.`, "O‘chirish", async () => { g.students = g.students.filter(x => x !== s); await saveGroup(g); viewGroup(g); });
+    $("esDel").onclick = () => confirmBox(`${esc(s.name)} o‘chirilsinmi? Uning natijalari testlarda “aniqlanmagan” bo‘lib qoladi.`, "O‘chirish", async () => { g.students = g.students.filter(x => x !== s); await saveGroup(g); if (location.hash.startsWith("#s/")) go("#g/" + g.id); else viewGroup(g); });
   });
 }
 function groupStats(g) {
@@ -1493,6 +1532,10 @@ function loadCanvas(b) { return new Promise(res => { if (b.canvas || !b.img) ret
   await Promise.all(tests.flatMap(t => t.blanks.map(loadCanvas)));
   if (location.hash.startsWith("#t/") && ui.ttab === "scan") route();
 })();
+
+/* ---- ekranni kattalashtirishni o‘chirish ---- */
+["gesturestart", "gesturechange", "gestureend"].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+document.addEventListener("touchmove", e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 /* ---- PWA ---- */
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => { });
