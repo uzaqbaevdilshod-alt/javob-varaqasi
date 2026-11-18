@@ -101,7 +101,7 @@ textarea{width:100%;min-height:150px;resize:vertical}
 /* students */
 .srow{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line2);cursor:pointer}
 .srow:last-child{border-bottom:0}
-.idb{font:700 13px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--line2);color:var(--ink2);border-radius:8px;padding:4px 7px;flex:none;min-width:38px;text-align:center}
+.idb{font:700 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--line2);color:var(--ink2);border-radius:8px;padding:4px 6px;flex:none;min-width:46px;text-align:center}
 .srow .nm{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .srow .pc{font-weight:700;font-variant-numeric:tabular-nums;width:52px;text-align:right}
 
@@ -200,7 +200,7 @@ const LET = "ABCDE";
 const PAGE_W = 210, PAGE_H = 297;
 
 // Geometry of ONE blank (strip) in mm. Strip coords: x 0..210, y 0..H
-function stripLayout(N, K, perPage, idGrid) {
+function stripLayout(N, K, perPage, idGrid, lay) {
   const H = PAGE_H / perPage;
   const MK = 7;                                   // marker size
   const markers = [[9, 8.5], [201, 8.5], [201, H - 8.5], [9, H - 8.5]];
@@ -208,22 +208,48 @@ function stripLayout(N, K, perPage, idGrid) {
   const r = 2.3, pitch = 6, numW = 8;
   const single = perPage === 1;
   const yTop = single ? 62 : 18.5, yBot = H - (single ? 12 : 7);
-  // ID grid: 2 rows (tens, ones) x 10 digits
-  const idR = 2.1, idPitch = 5.2, idX0 = 143.5;
-  const idRowsY = single ? [39.5, 46] : [17, 23];
-  const idRows = idRowsY.map(y => Array.from({ length: 10 }, (_, j) => [idX0 + j * idPitch, y]));
-  const idLabel = single ? [141, 34] : [141, 12.9];
-  // compact printed ID code: 7 data bits + 1 parity bit
-  const codeS = 2.6, codeY = single ? 29 : 7.5;
-  const code = Array.from({ length: 8 }, (_, i) => [142.3 + i * 3.6, codeY]);
+  let idR, idRows, idLabel, codeS, code, idMode = null, idBoxes = [], X0 = 14, codeTxt, idDigits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], noRoom = false;
+  if (lay !== 2) {
+    // v1: ID grid on the right, 2 digits; printed code 7+1 bits
+    idR = 2.1; const idPitch = 5.2, idX0 = 143.5;
+    const idRowsY = single ? [39.5, 46] : [17, 23];
+    idRows = idRowsY.map(y => Array.from({ length: 10 }, (_, j) => [idX0 + j * idPitch, y]));
+    idLabel = single ? [141, 34] : [141, 12.9];
+    codeS = 2.6; const codeY = single ? 29 : 7.5;
+    code = Array.from({ length: 8 }, (_, i) => [142.3 + i * 3.6, codeY]);
+    codeTxt = [code[7][0] + 3, codeY + 1];
+    idMode = "h";
+  } else {
+    // v2: ID grid on the LEFT, 4 digits; printed code 14+1 bits
+    idR = 1.8; codeS = 2.2;
+    const codeY = single ? 29 : 7.5;
+    code = Array.from({ length: 15 }, (_, i) => [142 + i * 3.0, codeY]);
+    codeTxt = [141, codeY + (single ? 5 : 4.6)];
+    // vertical columns, digits top-to-bottom: 1 2 3 4 5 6 7 8 9 0
+    idDigits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+    if (idGrid && (single || perPage <= 4)) {
+      idMode = "v"; idR = 1.8;
+      const y0 = single ? 70 : 24.5, xs = [18, 23, 28, 33];
+      idRows = xs.map(x => Array.from({ length: 10 }, (_, d) => [x, y0 + d * 4.4]));
+      idBoxes = xs.map(x => [x, y0 - 6.2]);
+      idLabel = [15.5, y0 - 10.2];
+      X0 = 39;
+    } else if (idGrid && perPage === 5) {
+      idMode = "v"; idR = 1.6;
+      const y0 = 17.6, pitch = (H - 5.5 - idR - y0) / 9, xs = [17.5, 22, 26.5, 31];
+      idRows = xs.map(x => Array.from({ length: 10 }, (_, d) => [x, y0 + d * pitch]));
+      idLabel = [15.5, 14.3];
+      X0 = 36;
+    } else { idRows = []; idLabel = [0, 0]; noRoom = !!idGrid; }
+  }
   const avail = yBot - yTop;
   const rowsMax = Math.max(1, Math.floor(avail / 5.3) + 1);
   const blockW = numW + K * pitch;
-  const X0 = 14, X1 = idGrid && !single ? 134 : (single ? 196 : 186);
+  const X1 = lay !== 2 && idGrid && !single ? 134 : (single ? 196 : 186);
   const maxCols = Math.max(1, Math.floor((X1 - X0) / (blockW + 2)));
   const rowsCap = single ? Math.min(rowsMax, Math.max(25, Math.ceil(N / maxCols))) : rowsMax;
   let cols = Math.ceil(N / rowsCap);
-  const fits = cols <= maxCols;
+  const fits = cols <= maxCols && !noRoom;
   cols = Math.max(1, Math.min(cols, maxCols));
   const rows = Math.ceil(N / cols);
   const rowH = rows > 1 ? Math.min(single ? 8 : 7.5, avail / (rows - 1)) : 0;
@@ -235,7 +261,7 @@ function stripLayout(N, K, perPage, idGrid) {
     const y = yTop + rr * rowH;
     q.push({ n: i + 1, nx: bx + numW - 1, y, b: Array.from({ length: K }, (_, j) => [bx + numW + j * pitch + pitch / 2, y]) });
   }
-  return { H, W: PAGE_W, MK, markers, orient, orientS, r, q, rows, cols, fits, rowsMax, maxCols, capacity: rowsMax * maxCols, single, idGrid: !!idGrid, idRows: idGrid ? idRows : [], idR, idLabel, code, codeS };
+  return { H, W: PAGE_W, MK, markers, orient, orientS, r, q, rows, cols, fits, rowsMax, maxCols, capacity: rowsMax * maxCols, single, idGrid: !!idGrid, idRows: idGrid ? idRows : [], idR, idLabel, code, codeS, codeTxt, idMode, idBoxes, idDigits, noRoom, lay: lay === 2 ? 2 : 1 };
 }
 
 function toGray(data, w, h) {
@@ -380,19 +406,21 @@ function findStrips(bin, w, h, cands, L) {
   return strips;
 }
 
-function codeBits(id) { const v = +id, b = Array.from({ length: 7 }, (_, i) => (v >> i) & 1); b.push(b.reduce((s, x) => s + x, 0) % 2); return b; }
+// printed ID code: n data bits (LSB first) + 1 even-parity bit. 8 squares = 7 bits (v1), 15 squares = 14 bits (v2)
+function codeBits(id, n = 14) { const v = +id, b = Array.from({ length: n }, (_, i) => (v >> i) & 1); b.push(b.reduce((s, x) => s + x, 0) % 2); return b; }
 function decodeCode(f) {
   if (!f || !f.length) return null;
   const b = f.map(x => x > 0.5 ? 1 : 0); if (!b.some(Boolean)) return null;
   if (f.some(x => x > 0.25 && x < 0.5)) return null;
   if (b.reduce((s, x) => s + x, 0) % 2) return null;
-  const v = b.slice(0, 7).reduce((s, x, i) => s + (x << i), 0);
-  return v >= 1 && v <= 99 ? String(v).padStart(2, "0") : null;
+  const v = b.slice(0, b.length - 1).reduce((s, x, i) => s + x * 2 ** i, 0);
+  return v >= 1 && v <= 9999 ? String(v).padStart(4, "0") : null;
 }
-function decideId(idFills, thr) {
+function decideId(idFills, thr, digits) {
   if (!idFills || !idFills.length) return null;
+  digits = digits || [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
   const d = idFills.map(f => decide(f, thr));
-  return d.every(x => x >= 0) ? d.join("") : null;
+  return d.every(x => x >= 0) ? d.map(j => digits[j]).join("").padStart(4, "0") : null;
 }
 function decide(fills, thr) {
   let mx = -1, mi = -1;
@@ -404,7 +432,7 @@ function decide(fills, thr) {
 
 // Analyze grayscale image; tries 4 rotations; returns {rot, w, h, strips:[{H, fills}]}
 function analyzeGray(g0, w0, h0, cfg) {
-  const L = stripLayout(cfg.N, cfg.K, cfg.P, cfg.idGrid);
+  const L = stripLayout(cfg.N, cfg.K, cfg.P, cfg.idGrid, cfg.lay);
   let best = null;
   for (const rot of [0, 90, 270, 180]) {
     const { g, w, h } = rotGray(g0, w0, h0, rot);
@@ -417,7 +445,7 @@ function analyzeGray(g0, w0, h0, cfg) {
   const rr = L.r * 0.55;
   for (const s of best.strips) {
     s.fills = L.q.map(q => q.b.map(([x, y]) => fillAt(best.bin, best.w, best.h, s.H, x, y, rr)));
-    s.codeFills = L.code.map(([x, y]) => fillAt(best.bin, best.w, best.h, s.H, x, y, 0.85));
+    s.codeFills = L.code.map(([x, y]) => fillAt(best.bin, best.w, best.h, s.H, x, y, L.codeS * 0.33));
     s.idFills = L.idRows.map(row => row.map(([x, y]) => fillAt(best.bin, best.w, best.h, s.H, x, y, L.idR * 0.55)));
   }
   return best;
@@ -486,7 +514,8 @@ const tmr = {};
 function saveTest(t) { clearTimeout(tmr[t.id]); tmr[t.id] = setTimeout(() => DB.put("tests", Object.assign({}, t, { blanks: t.blanks.map(b => { const { canvas, ...r } = b; return r; }) })), 250); }
 const groupTests = g => tests.filter(t => t.groupId === g.id).sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.created - b.created);
 const stName = (g, sid) => (g.students.find(s => s.id === sid) || {}).name;
-function nextId(g) { for (let i = 1; i < 100; i++) { const id = String(i).padStart(2, "0"); if (!g.students.some(s => s.id === id)) return id; } return null; }
+const allIds = () => new Set(groups.flatMap(g => g.students.map(s => s.id)));
+function nextId(g, taken) { taken = taken || allIds(); for (let i = 1; i < 10000; i++) { const id = String(i).padStart(4, "0"); if (!taken.has(id) && !g.students.some(s => s.id === id)) return id; } return null; }
 const sortStudents = g => g.students.sort((a, b) => a.id.localeCompare(b.id));
 
 /* ============================ SCORING ============================ */
@@ -582,15 +611,17 @@ function stripSVG(cfg, L, opt = {}) {
   }
   // printed ID code (only on named blanks)
   if (person) {
-    codeBits(person.id).forEach((bit, i) => { if (bit) { const [x, y] = L.code[i]; s += `<rect x="${x - L.codeS / 2}" y="${y - L.codeS / 2}" width="${L.codeS}" height="${L.codeS}" fill="#000"/>`; } });
-    s += `<text x="${L.code[7][0] + 3}" y="${L.code[0][1] + 1}" font-size="2.6" fill="#555" ${F}>ID ${esc(person.id)}</text>`;
+    codeBits(+person.id, L.code.length - 1).forEach((bit, i) => { if (bit) { const [x, y] = L.code[i]; s += `<rect x="${x - L.codeS / 2}" y="${y - L.codeS / 2}" width="${L.codeS}" height="${L.codeS}" fill="#000"/>`; } });
+    s += `<text x="${L.codeTxt[0]}" y="${L.codeTxt[1]}" font-size="2.4" fill="#555" ${F}>ID ${esc(person.id)}</text>`;
   }
   // ID grid (optional)
   const [lx, ly] = L.idLabel;
   if (L.idGrid) s += `<text x="${lx}" y="${ly}" font-size="${L.single ? 3.4 : 2.8}" font-weight="bold" ${F}>ID raqam</text>`;
+  if (L.idGrid && L.idBoxes.length) L.idBoxes.forEach(([x, y]) => { s += `<rect x="${x - 2.1}" y="${y - 2.3}" width="4.2" height="4.6" fill="none" stroke="#9aa1ad" stroke-width="0.25"/>`; });
+  const dsz = L.idR < 1.7 ? 1.9 : L.idR < 2 ? 2.1 : 2.4;
   L.idRows.forEach((row, ri) => row.forEach(([x, y], j) => {
-    s += `<circle cx="${x}" cy="${y}" r="${L.idR}" fill="#fff" stroke="#222" stroke-width="0.28"/><text x="${x}" y="${y + 0.85}" font-size="2.4" fill="#a8adb5" text-anchor="middle" ${F}>${j}</text>`;
-    if (opt.idFill && opt.idFill[ri] === j) s += `<circle cx="${x}" cy="${y}" r="${L.idR * 0.9}" fill="#1a2a6c"/>`;
+    s += `<circle cx="${x}" cy="${y}" r="${L.idR}" fill="#fff" stroke="#222" stroke-width="0.26"/><text x="${x}" y="${y + dsz * 0.33}" font-size="${dsz}" fill="#a8adb5" text-anchor="middle" ${F}>${L.idDigits[j]}</text>`;
+    if (opt.idFill && opt.idFill[ri] === L.idDigits[j]) s += `<circle cx="${x}" cy="${y}" r="${L.idR * 0.9}" fill="#1a2a6c"/>`;
   }));
   // questions
   L.q.forEach((q, i) => {
@@ -605,7 +636,7 @@ function stripSVG(cfg, L, opt = {}) {
 }
 // slots: array (length P) of {person, fills, idFill} or null
 function pageSVG(cfg, slots, opt = {}) {
-  const L = stripLayout(cfg.N, cfg.K, cfg.P, cfg.idGrid);
+  const L = stripLayout(cfg.N, cfg.K, cfg.P, cfg.idGrid, cfg.lay);
   const size = opt.px ? `width="${opt.px}" height="${Math.round(opt.px * PAGE_H / PAGE_W)}"` : `width="210mm" height="297mm"`;
   let s = `<svg xmlns="http://www.w3.org/2000/svg" ${size} viewBox="0 0 210 297"><rect width="210" height="297" fill="#fff"/>`;
   for (let p = 0; p < cfg.P; p++) {
@@ -645,7 +676,7 @@ async function pagesToPdf(svgs, name) {
 const safeName = s => (s || "test").replace(/[\\/:*?"<>|]+/g, "").trim().slice(0, 60) || "test";
 
 /* ============================ MODAL / UI ============================ */
-function modal(html, mount) { $("sheet").innerHTML = html; $("modal").classList.add("on"); if (mount) mount($("sheet")); const f = $("sheet").querySelector("input,textarea"); if (f && !/iPhone|iPad/.test(navigator.userAgent)) setTimeout(() => f.focus(), 50); }
+function modal(html, mount) { $("sheet").innerHTML = html; $("modal").classList.add("on"); if (mount) mount($("sheet")); const f = $("sheet").querySelector("input,textarea"); if (f && !/iPhone|iPad/.test(navigator.userAgent)) setTimeout(() => { if (!$("sheet").contains(document.activeElement)) f.focus(); }, 50); }
 function closeModal() { $("modal").classList.remove("on"); }
 $("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
 function confirmBox(text, okText, fn) {
@@ -678,7 +709,7 @@ function viewHome() {
   let h = `<div class="hero"><h2>Assalomu alaykum!</h2><p>Guruh tanlang yoki yangisini oching.</p>
     <div class="hs"><div><b>${groups.length}</b><span>guruh</span></div><div><b>${nSt}</b><span>o‘quvchi</span></div><div><b>${tests.length}</b><span>test</span></div><div><b>${nRes}</b><span>tekshirilgan</span></div></div></div>
     <div class="sec"><h3>Guruhlar</h3><button class="btn s p" id="hNew">${IC.plus} Guruh ochish</button></div>`;
-  if (!groups.length) h += `<div class="card empty"><div class="big">👥</div><b>Hali guruh yo‘q</b>Sinf yoki guruh oching, o‘quvchilarni kiriting — har biriga ID beriladi.<br><br><button class="btn p" id="hNew2">${IC.plus} Birinchi guruhni ochish</button></div>`;
+  if (!groups.length) h += `<div class="card empty"><div class="big">👥</div><b>Hali guruh yo‘q</b>Sinf yoki guruh oching, o‘quvchilarni kiriting — har biriga 4 xonali ID beriladi.<br><br><button class="btn p" id="hNew2">${IC.plus} Birinchi guruhni ochish</button></div>`;
   else h += `<div class="list">${groups.slice().sort((a, b) => a.name.localeCompare(b.name)).map(g => {
     const ts = groupTests(g), avgs = ts.map(testAvg), all = avgs.filter(x => x != null), a = all.length ? r1(avg(all)) : null;
     return `<div class="gcard" data-g="${g.id}"><div class="av">${esc((g.name.replace(/[^\p{L}\p{N}]/gu, "") || "G").slice(0, 2).toUpperCase())}</div><div class="mid"><div class="nm">${esc(g.name)}</div><div class="ds">${g.students.length} o‘quvchi · ${ts.length} test</div></div>
@@ -692,7 +723,7 @@ function newGroupDlg() {
   modal(`<h3>Yangi guruh</h3>
     <label class="f">Guruh nomi<input type="text" id="ngName" placeholder="masalan: 7-A sinf"></label>
     <label class="f">O‘quvchilar (ixtiyoriy, har qatorda bittadan)<textarea id="ngList" placeholder="Aliyev Vali&#10;Karimova Malika&#10;..."></textarea></label>
-    <div class="small mut">Har bir o‘quvchiga avtomatik ID beriladi: 01, 02, 03… O‘quvchilarni keyin ham qo‘shish mumkin.</div>
+    <div class="small mut">Har bir o‘quvchiga avtomatik 4 xonali ID beriladi (0001, 0002…). O‘z ID raqamlaringiz bo‘lsa, qatorni “1234 Familiya Ism” ko‘rinishida yozing.</div>
     <div class="acts"><button class="btn" data-x>Bekor qilish</button><button class="btn p" id="ngOk">Yaratish</button></div>`, el => {
     el.querySelector("[data-x]").onclick = closeModal;
     $("ngOk").onclick = async () => {
@@ -703,9 +734,17 @@ function newGroupDlg() {
     };
   });
 }
+// lines: "Familiya Ism", "1234 Familiya Ism" or "Familiya Ism;1234" (4-digit ID optional)
 function addStudentsFromText(g, text) {
-  let n = 0;
-  text.split(/\r?\n/).map(s => s.replace(/^\s*\d+[.)\s-]+/, "").trim()).filter(Boolean).forEach(name => { const id = nextId(g); if (id) { g.students.push({ id, name }); n++; } });
+  let n = 0; const taken = allIds();
+  text.split(/\r?\n/).forEach(line => {
+    line = line.trim(); if (!line) return; let id = null, m;
+    if ((m = line.match(/^(\d{4})[\s;,\t]+(.+)$/))) { id = m[1]; line = m[2]; }
+    else if ((m = line.match(/^(.+?)[\s;,\t]+(\d{4})$/))) { id = m[2]; line = m[1]; }
+    const name = line.replace(/^\s*\d{1,3}[.)\s-]+/, "").replace(/[;,\t]+$/, "").trim(); if (!name) return;
+    if (!id || id === "0000" || taken.has(id) || g.students.some(s => s.id === id)) id = nextId(g, taken);
+    if (id) { g.students.push({ id, name }); taken.add(id); n++; }
+  });
   sortStudents(g); return n;
 }
 
@@ -745,7 +784,7 @@ function groupTestsView(g, ts) {
 }
 async function newTest(g) {
   const last = groupTests(g).slice(-1)[0];
-  const t = { id: uid("t"), lv: 3, groupId: g.id, created: Date.now(), date: today(), cfg: Object.assign({ N: 30, K: 4, P: 1, idGrid: false }, last ? { N: last.cfg.N, K: last.cfg.K, P: last.cfg.P, idGrid: !!last.cfg.idGrid } : {}, { title: `Test ${groupTests(g).length + 1}` }), key: [], thr: 0.45, blanks: [] };
+  const t = { id: uid("t"), lv: 3, groupId: g.id, created: Date.now(), date: today(), cfg: Object.assign({ N: 30, K: 4, P: 1, idGrid: false, lay: 2 }, last ? { N: last.cfg.N, K: last.cfg.K, P: last.cfg.P, idGrid: !!last.cfg.idGrid, lay: 2 } : {}, { title: `Test ${groupTests(g).length + 1}` }), key: [], thr: 0.45, blanks: [] };
   t.key = Array(t.cfg.N).fill(-1);
   tests.push(t); await DB.put("tests", t); ui.ttab = "sheet"; go("#t/" + t.id);
 }
@@ -753,12 +792,12 @@ function groupStudents(g) {
   const rows = g.students.map(s => ({ s, sm: studentSummary(g, s.id) }));
   let h = `<div class="card"><div class="row"><label class="f grow">Yangi o‘quvchi<input type="text" id="sName" placeholder="Familiya Ism"></label><button class="btn p" id="sAdd">${IC.plus} Qo‘shish</button></div>
     <div class="btns" style="margin-top:10px"><button class="btn s" id="sBulk">${IC.users} Ro‘yxatdan qo‘shish</button><button class="btn s" id="sCards">${IC.dl} ID ro‘yxatini yuklab olish</button></div></div>`;
-  if (!g.students.length) h += `<div class="card empty"><div class="big">🧑‍🎓</div><b>O‘quvchilar yo‘q</b>Ism-familiyalarni kiriting — har biriga 01, 02… tartibida ID beriladi. ID ni o‘quvchi blankadagi doirachalarda belgilaydi yoki ismli blanka chop etasiz.</div>`;
+  if (!g.students.length) h += `<div class="card empty"><div class="big">🧑‍🎓</div><b>O‘quvchilar yo‘q</b>Ism-familiyalarni kiriting — har biriga 4 xonali ID beriladi (0001, 0002…). ID ni o‘quvchi blankadagi doirachalarda belgilaydi yoki ismli blanka chop etasiz.</div>`;
   else h += `<div class="card" style="padding:6px 14px">${rows.map(({ s, sm }) => `<div class="srow" data-s="${s.id}"><span class="idb">${s.id}</span><span class="nm">${esc(s.name)}${sm.n ? `<small>${sm.n} ta test</small>` : ""}</span>${sm.n ? `<span class="pc">${sm.avg}%</span>${gbadge(sm.avg)}` : `<span class="small mut">natija yo‘q</span>`}<button class="ib" data-e="${s.id}" aria-label="Tahrirlash" style="width:34px;height:34px"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>`).join("")}</div>`;
   $("view").innerHTML = h;
-  const add = async () => { const n = $("sName").value.trim(); if (!n) return; const id = nextId(g); if (!id) { toast("Guruhda 99 tadan ko‘p o‘quvchi bo‘lmaydi"); return; } g.students.push({ id, name: n }); sortStudents(g); await saveGroup(g); viewGroup(g); toast(`${n} — ID ${id}`); setTimeout(() => $("sName") && $("sName").focus(), 30); };
+  const add = async () => { const n = $("sName").value.trim(); if (!n) return; const id = nextId(g); if (!id) { toast("Bo‘sh ID qolmadi"); return; } g.students.push({ id, name: n }); sortStudents(g); await saveGroup(g); viewGroup(g); toast(`${n} — ID ${id}`); setTimeout(() => $("sName") && $("sName").focus(), 30); };
   $("sAdd").onclick = add; $("sName").onkeydown = e => { if (e.key === "Enter") add(); };
-  $("sBulk").onclick = () => modal(`<h3>Ro‘yxatdan qo‘shish</h3><label class="f">Har qatorda bitta o‘quvchi (Excel yoki Word’dan nusxalab qo‘yish mumkin)<textarea id="bList"></textarea></label><div class="acts"><button class="btn" data-x>Bekor qilish</button><button class="btn p" id="bOk">Qo‘shish</button></div>`, el => {
+  $("sBulk").onclick = () => modal(`<h3>Ro‘yxatdan qo‘shish</h3><label class="f">Har qatorda bitta o‘quvchi (Excel yoki Word’dan nusxalab qo‘yish mumkin). ID bilan: “1234 Familiya Ism”<textarea id="bList"></textarea></label><div class="acts"><button class="btn" data-x>Bekor qilish</button><button class="btn p" id="bOk">Qo‘shish</button></div>`, el => {
     el.querySelector("[data-x]").onclick = closeModal;
     $("bOk").onclick = async () => { const n = addStudentsFromText(g, $("bList").value); await saveGroup(g); closeModal(); viewGroup(g); toast(`${n} ta o‘quvchi qo‘shildi`); };
   });
@@ -768,13 +807,13 @@ function groupStudents(g) {
 }
 function editStudent(g, sid) {
   const s = g.students.find(x => x.id === sid); if (!s) return;
-  modal(`<h3>O‘quvchi</h3><label class="f">Ism familiya<input type="text" id="esName" value="${esc(s.name)}"></label><label class="f">ID (01–99)<input type="text" id="esId" value="${s.id}" inputmode="numeric" maxlength="2" style="width:100px"></label>
+  modal(`<h3>O‘quvchi</h3><label class="f">Ism familiya<input type="text" id="esName" value="${esc(s.name)}"></label><label class="f">ID (4 xonali, 0001–9999)<input type="text" id="esId" value="${s.id}" inputmode="numeric" maxlength="4" style="width:120px"></label>
     <div class="acts" style="justify-content:space-between"><button class="btn d" id="esDel">O‘chirish</button><span class="btns"><button class="btn" data-x>Bekor</button><button class="btn p" id="esOk">Saqlash</button></span></div>`, el => {
     el.querySelector("[data-x]").onclick = closeModal;
     $("esOk").onclick = async () => {
-      const name = $("esName").value.trim(), id = $("esId").value.trim().padStart(2, "0");
-      if (!/^\d\d$/.test(id) || id === "00") { toast("ID 01 dan 99 gacha bo‘lishi kerak"); return; }
-      if (id !== s.id && g.students.some(x => x.id === id)) { toast(`ID ${id} band`); return; }
+      const name = $("esName").value.trim(), id = $("esId").value.trim().padStart(4, "0");
+      if (!/^\d{4}$/.test(id) || id === "0000") { toast("ID 0001 dan 9999 gacha bo‘lishi kerak"); return; }
+      if (id !== s.id && allIds().has(id)) { const og = groups.find(x => x.students.some(y => y.id === id)); toast(`ID ${id} band (${og ? og.name : ""})`); return; }
       if (id !== s.id) groupTests(g).forEach(t => { t.blanks.forEach(b => { if (b.sid === s.id) b.sid = id; }); saveTest(t); });
       if (name) s.name = name; s.id = id; sortStudents(g); await saveGroup(g); closeModal(); viewGroup(g);
     };
@@ -883,7 +922,7 @@ function tabSheet(t, g) {
       <label class="f grow">Blanka turi<select id="cMode" ${locked ? "disabled" : ""}><option value="1">1 varaq = 1 o‘quvchi</option><option value="m">1 varaqda bir nechta</option></select></label>
       <label class="f" id="cPw">A4 da nechta<select id="cP" ${locked ? "disabled" : ""}><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
     </div>
-    <label style="display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:14px;cursor:pointer"><input type="checkbox" id="cGrid" ${c.idGrid ? "checked" : ""} ${locked ? "disabled" : ""} style="width:20px;height:20px;margin:1px 0 0;accent-color:var(--acc)"><span><b>ID doirachalari</b> <span class="mut">— bo‘sh blankada o‘quvchi o‘z ID sini belgilaydi. Ko‘p joy oladi; ismli blankalar uchun shart emas.</span></span></label>
+    <label style="display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:14px;cursor:pointer"><input type="checkbox" id="cGrid" ${c.idGrid ? "checked" : ""} ${locked ? "disabled" : ""} style="width:20px;height:20px;margin:1px 0 0;accent-color:var(--acc)"><span><b>ID doirachalari</b> <span class="mut">— bo‘sh blankada o‘quvchi 4 xonali ID sini o‘zi bo‘yaydi (blankaning chap tomonida). Ismli blankalar uchun shart emas.</span></span></label>
     <p id="cMsg" class="small mut" style="margin:10px 0 0"></p>
     ${locked ? `<p class="small mut" style="margin:6px 0 0">🔒 Natijalar bor — savollar soni va blanka turi qulflangan.</p>` : ""}</div>
     <div class="card"><h2>Chop etish</h2>
@@ -892,14 +931,14 @@ function tabSheet(t, g) {
         <button class="btn" id="pBlank">${IC.dl} Bo‘sh blanka (PDF)</button>
         <button class="btn" id="pPng">${IC.img} PNG</button>
       </div>
-      <div class="note"><b>Ismli blankalar</b> — har bir o‘quvchining ismi va kichik ID kodi (yuqoridagi mayda kvadratchalar) bosiladi, skanerda o‘quvchi avtomatik aniqlanadi.<br><b>Bo‘sh blanka</b> — ${c.idGrid ? "o‘quvchi “ID raqam” qatorlariga o‘z ID sini belgilaydi (07: yuqorida 0, pastda 7)." : "skanerlagach o‘quvchini ro‘yxatdan tanlaysiz (yoki “ID doirachalari”ni yoqing)."}</div>
+      <div class="note"><b>Ismli blankalar</b> — har bir o‘quvchining ismi va kichik ID kodi (yuqoridagi mayda kvadratchalar) bosiladi, skanerda o‘quvchi avtomatik aniqlanadi.<br><b>Bo‘sh blanka</b> — ${c.idGrid ? (c.lay === 2 ? "o‘quvchi chap tomondagi 4 ta ustunga ID sining har bir raqamini bo‘yaydi (masalan 0127: 1-ustunda 0, 2-da 1, 3-da 2, 4-da 7)." : "o‘quvchi “ID raqam” qatorlariga o‘z ID sini belgilaydi.") : "skanerlagach o‘quvchini ro‘yxatdan tanlaysiz (yoki “ID doirachalari”ni yoqing)."}</div>
       <div class="preview" id="prev" style="margin-top:12px"></div></div>`;
   $("cK").value = c.K; $("cMode").value = c.P === 1 ? "1" : "m"; if (c.P > 1) $("cP").value = c.P; $("cPw").style.display = c.P === 1 ? "none" : "";
   const render = () => {
-    const L = stripLayout(c.N, c.K, c.P, c.idGrid);
+    const L = stripLayout(c.N, c.K, c.P, c.idGrid, c.lay);
     const sample = g && g.students[0] ? null : null;
     $("prev").innerHTML = pageSVG(c, null, { groupName: g ? g.name : "", date: t.date });
-    $("cMsg").innerHTML = !L.fits ? `<span style="color:var(--bad)">⚠ ${c.N} ta savol sig‘maydi (maksimum ${L.capacity}). ${c.P > 1 ? "A4 dagi blankalar sonini kamaytiring yoki “1 varaq = 1 o‘quvchi” ni tanlang." : "Savollar sonini kamaytiring."}</span>`
+    $("cMsg").innerHTML = L.noRoom ? `<span style="color:var(--bad)">⚠ Bitta A4 da 6 ta blanka bo‘lsa, ID doirachalari sig‘maydi. 5 tagacha tanlang yoki ID doirachalarini o‘chiring (ismli blankalarda ID kod bilan aniqlanadi).</span>` : !L.fits ? `<span style="color:var(--bad)">⚠ ${c.N} ta savol sig‘maydi (maksimum ${L.capacity}). ${c.P > 1 ? "A4 dagi blankalar sonini kamaytiring yoki “1 varaq = 1 o‘quvchi” ni tanlang." : "Savollar sonini kamaytiring."}</span>`
       : c.P === 1 ? `${c.N} ta savol (${L.cols} ustun × ${L.rows} qator). Bitta varaq — bitta o‘quvchi.` : `Har blankada ${c.N} ta savol (${L.cols} × ${L.rows}). Bitta A4 dan ${c.P} ta blanka.`;
     ["pNamed", "pBlank", "pPng"].forEach(id => { if (id !== "pNamed" || (g && g.students.length)) $(id).disabled = !L.fits; });
   };
@@ -972,10 +1011,10 @@ let scanErrs = [];
 async function processCanvas(t, canvas, srcName) {
   const { data } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
   const res = analyzeGray(toGray(data, canvas.width, canvas.height), canvas.width, canvas.height, t.cfg);
-  const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid), g = G(t.groupId);
+  const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid, t.cfg.lay), g = G(t.groupId);
   if (!res.strips.length) { scanErrs.push({ e: 1, m: `“${esc(srcName)}”: blanka topilmadi. 4 ta burchak kvadrati to‘liq ko‘rinsin, blanka shu test sozlamasi bilan chop etilgan bo‘lsin.` }); return 0; }
   for (const s of res.strips) {
-    const detId = decodeCode(s.codeFills) || decideId(s.idFills, thrOf(t));
+    const detId = decodeCode(s.codeFills) || decideId(s.idFills, thrOf(t), L.idDigits);
     const cv = rectify(res, s, L);
     t.blanks.push({ id: uid("b"), src: srcName, ts: Date.now(), img: cv.toDataURL("image/jpeg", 0.75), canvas: cv, fills: s.fills, idFills: s.idFills, codeFills: s.codeFills, detId, sid: detId && g && g.students.some(x => x.id === detId) ? detId : null, over: {} });
   }
@@ -1011,12 +1050,12 @@ function tabScan(t, g) {
   ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("over"); }));
   ["dragleave", "drop"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove("over"); }));
   d.addEventListener("drop", e => handleFiles(t, e.dataTransfer.files));
-  $("thr").oninput = () => { t.thr = +$("thr").value; $("thrV").textContent = Math.round(t.thr * 100) + "%"; t.blanks.forEach(b => { if (!b.manualSid) { const id = decodeCode(b.codeFills) || decideId(b.idFills, t.thr); b.detId = id; if (id && g.students.some(s => s.id === id)) b.sid = id; } }); saveTest(t); renderBlanks(t, g); };
+  $("thr").oninput = () => { t.thr = +$("thr").value; $("thrV").textContent = Math.round(t.thr * 100) + "%"; const LL = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid, t.cfg.lay); t.blanks.forEach(b => { if (!b.manualSid) { const id = decodeCode(b.codeFills) || decideId(b.idFills, t.thr, LL.idDigits); b.detId = id; if (id && g.students.some(s => s.id === id)) b.sid = id; } }); saveTest(t); renderBlanks(t, g); };
   $("bDemo").onclick = () => demo(t, g);
   renderBlanks(t, g);
 }
 function drawOverlay(t, b) {
-  const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid), c = document.createElement("canvas");
+  const L = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid, t.cfg.lay), c = document.createElement("canvas");
   c.width = b.canvas ? b.canvas.width : Math.round(L.W * 4); c.height = b.canvas ? b.canvas.height : Math.round(L.H * 4);
   const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); if (b.canvas) x.drawImage(b.canvas, 0, 0);
   const k = c.width / L.W, a = answersOf(t, b), thr = thrOf(t); x.lineWidth = 2.2;
@@ -1062,7 +1101,7 @@ async function demo(t, g) {
   for (let p = 0; p < c.P; p++) {
     const fills = Array.from({ length: c.N }, (_, i) => { const r = Math.random(); if (r < 0.05) return []; const k = (t.key[i] ?? -1) >= 0 && r < 0.4 + 0.5 * Math.random() ? t.key[i] : Math.floor(Math.random() * c.K); return [k]; });
     const st = pool[p];
-    slots.push(st ? (c.idGrid ? { fills, idFill: st.id.split("").map(Number) } : { fills, person: st }) : { fills });
+    slots.push(st ? (c.idGrid ? { fills, idFill: st.id.padStart(4, "0").slice(-stripLayout(c.N, c.K, c.P, c.idGrid, c.lay).idRows.length).split("").map(Number) } : { fills, person: st }) : { fills });
   }
   const pw = 1300, ph = Math.round(pw * 297 / 210);
   const sheet = await svgToCanvas(pageSVG(c, slots, { px: pw, groupName: g.name, date: t.date }), pw, ph);
@@ -1253,6 +1292,9 @@ function loadCanvas(b) { return new Promise(res => { if (b.canvas || !b.img) ret
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
   groups = await DB.all("groups"); tests = await DB.all("tests");
   groups.forEach(g => { g.students = g.students || []; });
+  // 2 xonali eski ID larni 4 xonaliga o‘tkazish
+  for (const g of groups) if (g.students.some(s => s.id.length < 4)) { g.students.forEach(s => { s.id = s.id.padStart(4, "0"); }); await saveGroup(g); }
+  for (const t of tests) if ((t.blanks || []).some(b => (b.sid && b.sid.length < 4) || (b.detId && b.detId.length < 4))) { t.blanks.forEach(b => { if (b.sid) b.sid = b.sid.padStart(4, "0"); if (b.detId) b.detId = b.detId.padStart(4, "0"); }); await DB.put("tests", t); }
   // eski versiyadagi guruhsiz testlarni ko‘chirish
   const orphan = tests.filter(t => !t.groupId || !G(t.groupId));
   if (orphan.length) {
