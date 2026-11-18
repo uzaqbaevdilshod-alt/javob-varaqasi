@@ -801,13 +801,14 @@ function groupStats(g) {
   h += `<div class="card"><h2>Daraja bo‘yicha taqsimot <small>(o‘quvchilarning o‘rtacha natijasi)</small></h2>${distHtml(ranked.map(r => r.sm.avg))}<div class="small mut" style="margin-top:10px">Baholash: 86–100% — 5 (a’lo), 71–85% — 4 (yaxshi), 56–70% — 3 (qoniqarli), 55% gacha — 2.</div></div>`;
   if (attention.length || missed.length) h += `<div class="card"><h2>⚠ E’tibor talab qiladi</h2>${attention.map(r => `<div class="srow" data-s="${r.s.id}"><span class="idb">${r.s.id}</span><span class="nm">${esc(r.s.name)}<small>${r.sm.avg < 56 ? "o‘rtacha natija past" : "oxirgi testda keskin pasaygan"}</small></span><span class="pc">${r.sm.avg}%</span>${trendHtml(r.sm)}</div>`).join("")}
     ${missed.length ? `<div class="small mut" style="margin-top:10px">Oxirgi testni topshirmagan: ${missed.map(s => esc(s.name)).join(", ")}</div>` : ""}</div>`;
-  h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Reyting</h2><button class="btn s" id="gCsv">${IC.csv} CSV</button></div><div class="tscroll"><table>
+  h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Reyting</h2><span class="btns">${expBtns("gx")}<button class="btn s" id="gCsv">${IC.csv} CSV</button></span></div><div class="tscroll"><table>
     <tr><th>#</th><th>ID</th><th>O‘quvchi</th><th class="num">Test</th><th class="num">O‘rtacha</th><th class="num">Oxirgi</th><th>O‘zgarish</th><th>Dinamika</th><th>Daraja</th></tr>
     ${ranked.map((r, i) => `<tr class="cl" data-s="${r.s.id}"><td>${i + 1}</td><td><span class="idb">${r.s.id}</span></td><td>${esc(r.s.name)}</td><td class="num">${r.sm.n}/${ts.length}</td><td class="num"><b>${r.sm.avg}%</b></td><td class="num">${r.sm.last}%</td><td>${trendHtml(r.sm)}</td><td>${spark(r.sm.h.map(x => x.pct))}</td><td>${gbadge(r.sm.avg)}</td></tr>`).join("")}
     ${rows.filter(r => !r.sm.n).map(r => `<tr class="cl" data-s="${r.s.id}"><td></td><td><span class="idb">${r.s.id}</span></td><td>${esc(r.s.name)}</td><td class="num">0/${ts.length}</td><td class="num mut">—</td><td></td><td></td><td></td><td>${gbadge(null)}</td></tr>`).join("")}
     </table></div></div>`;
   $("view").innerHTML = h;
   $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${g.id}/${el.dataset.s}`));
+  bindExp("gx", () => groupReportSpec(g), `${safeName(g.name)}-reyting`);
   $("gCsv").onclick = () => {
     const head = ["O'rin", "ID", "Ism familiya", "Testlar", "O'rtacha %", "Oxirgi %", "Baho", ...ts.map(t => `${t.cfg.title} (${fmtDate(t.date)})`)];
     const body = [...ranked, ...rows.filter(r => !r.sm.n)].map((r, i) => [r.sm.n ? i + 1 : "", r.s.id, r.s.name, r.sm.n, r.sm.avg ?? "", r.sm.last ?? "", grade(r.sm.avg).g || "", ...ts.map(t => { const x = resultOf(t, r.s.id); return x ? x.pct : ""; })]);
@@ -838,7 +839,8 @@ function viewStudent(g, sid) {
   const above = sm.h.filter(x => { const ga = testAvg(x.t); return ga != null && x.pct >= ga; }).length;
   let h = `<div class="card" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
       <div class="av" style="width:64px;height:64px;font-size:22px;border-radius:18px;background:${GCOL[gr.g]}1a;color:${GCOL[gr.g]}">${gr.g}</div>
-      <div style="flex:1;min-width:180px"><div style="font-size:13px;color:var(--mut)">Umumiy daraja</div><div style="font-size:22px;font-weight:800">${gr.t} · ${sm.avg}%</div><div class="small" style="color:var(--ink2)">${msg}</div></div></div>
+      <div style="flex:1;min-width:180px"><div style="font-size:13px;color:var(--mut)">Umumiy daraja</div><div style="font-size:22px;font-weight:800">${gr.t} · ${sm.avg}%</div><div class="small" style="color:var(--ink2)">${msg}</div></div>
+      <div class="btns" style="width:100%"><span class="small mut" style="align-self:center">Hisobot (ota-onaga yuborish uchun):</span>${expBtns("sx")}</div></div>
     <div class="kpis">
       <div class="kpi"><span>O‘rtacha</span><b>${sm.avg}%</b>${gbadge(sm.avg)}</div>
       <div class="kpi"><span>Oxirgi test</span><b>${sm.last}%</b>${trendHtml(sm)}</div>
@@ -850,6 +852,7 @@ function viewStudent(g, sid) {
     ${ts.slice().reverse().map(t => { const r = resultOf(t, sid), ga = testAvg(t); return `<tr class="cl" data-t="${t.id}"><td>${fmtDate(t.date)}</td><td>${esc(t.cfg.title)}</td><td class="num">${r ? r.ok + "/" + r.tot : "—"}</td><td class="num"><b>${r && r.pct != null ? r.pct + "%" : '<span class="mut">qatnashmagan</span>'}</b></td><td class="num mut">${ga ?? "—"}%</td><td>${r ? gbadge(r.pct) : ""}</td></tr>`; }).join("")}</table></div></div>`;
   $("view").innerHTML = h;
   $("view").querySelectorAll("[data-t]").forEach(el => el.onclick = () => { ui.ttab = "results"; go("#t/" + el.dataset.t); });
+  bindExp("sx", () => studentReportSpec(g, sid), `${safeName(st.name)}-hisobot`);
 }
 
 /* ============================ TEST ============================ */
@@ -1084,7 +1087,7 @@ function tabResults(t, g) {
   h += `<div class="kpis"><div class="kpi"><span>Topshirdi</span><b>${t.blanks.length}${g.students.length ? `<span style="font-size:14px;color:var(--mut)"> / ${g.students.length}</span>` : ""}</b>${unknown ? `<em style="color:var(--warn)">${unknown} tasi aniqlanmagan</em>` : ""}</div>
     <div class="kpi"><span>O‘rtacha</span><b>${a ?? "—"}%</b>${gbadge(a)}</div><div class="kpi"><span>Eng yuqori</span><b>${pcts.length ? Math.max(...pcts) : "—"}%</b></div><div class="kpi"><span>Eng past</span><b>${pcts.length ? Math.min(...pcts) : "—"}%</b></div></div>`;
   h += `<div class="card"><h2>Baholar taqsimoti</h2>${distHtml(pcts)}</div>`;
-  h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Natijalar</h2><span class="btns"><button class="btn s" id="rCsv">${IC.csv} CSV</button><button class="btn s" id="rCopy">📋 Nusxa</button></span></div>
+  h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Natijalar</h2><span class="btns">${expBtns("rx")}<button class="btn s" id="rCsv">${IC.csv} CSV</button><button class="btn s" id="rCopy">📋 Nusxa</button></span></div>
     <div class="tscroll"><table><tr><th>#</th><th>ID</th><th>O‘quvchi</th><th class="num">To‘g‘ri</th><th class="num">Xato</th><th class="num">Bo‘sh</th><th class="num">%</th><th>Baho</th></tr>
     ${rows.map((r, i) => `<tr ${r.b.sid ? `class="cl" data-s="${r.b.sid}"` : ""}><td>${i + 1}</td><td>${r.b.sid ? `<span class="idb">${r.b.sid}</span>` : ""}</td><td>${r.name ? esc(r.name) : `<span style="color:var(--warn)">aniqlanmagan</span>`}</td><td class="num"><b>${r.s.ok}</b></td><td class="num">${r.s.bad}</td><td class="num">${r.s.emp}</td><td class="num"><b>${r.s.pct ?? "—"}</b></td><td>${gbadge(r.s.pct)}</td></tr>`).join("")}</table></div>
     ${missing.length ? `<div class="small mut" style="margin-top:10px"><b>Topshirmagan (${missing.length}):</b> ${missing.map(s => `${s.id} ${esc(s.name)}`).join(", ")}</div>` : ""}</div>`;
@@ -1097,8 +1100,150 @@ function tabResults(t, g) {
   $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${g.id}/${el.dataset.s}`));
   const table = () => [["#", "ID", "Ism familiya", "To'g'ri", "Xato", "Bo'sh", "Jami", "Foiz", "Baho", ...Array.from({ length: t.cfg.N }, (_, i) => String(i + 1))], ["", "", "KALIT", "", "", "", "", "", "", ...t.key.map(letter)],
     ...rows.map((r, i) => [i + 1, r.b.sid || "", r.name || "aniqlanmagan", r.s.ok, r.s.bad, r.s.emp, r.s.tot, r.s.pct ?? "", grade(r.s.pct).g || "", ...r.s.a.map(letter)])];
+  bindExp("rx", () => testReportSpec(t, g), `${safeName(t.cfg.title)}-natijalar`);
   $("rCsv").onclick = () => { const csv = table().map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(";")).join("\r\n"); download(`${safeName(t.cfg.title)}-natijalar.csv`, new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" })); };
   $("rCopy").onclick = async () => { try { await navigator.clipboard.writeText(table().map(r => r.join("\t")).join("\n")); toast("📋 Nusxalandi — Excel’ga qo‘yishingiz mumkin"); } catch (e) { toast("Nusxalab bo‘lmadi"); } };
+}
+
+/* ============================ REPORTS (PDF / PNG) ============================ */
+const RP = { W: 1240, PH: 1754, M: 64, F: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif' };
+const GC = { 5: ["#e7f6ec", "#15803d"], 4: ["#e8efff", "#1d4ed8"], 3: ["#fff4e2", "#b45309"], 2: ["#fdecec", "#b91c1c"], 0: ["#f1f3f7", "#8a94a8"] };
+function fnt(x, sz, wt = 400) { x.font = `${wt} ${sz}px ${RP.F}`; }
+function fit(x, s, w) { s = String(s ?? ""); if (x.measureText(s).width <= w) return s; while (s.length > 1 && x.measureText(s + "…").width > w) s = s.slice(0, -1); return s + "…"; }
+function rrect(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
+function pill(x, X, Yc, txt, g, sz = 19) { fnt(x, sz, 700); const w = x.measureText(txt).width + 22, h = sz + 12; x.fillStyle = GC[g][0]; rrect(x, X, Yc - h / 2, w, h, h / 2); x.fill(); x.fillStyle = GC[g][1]; x.textBaseline = "middle"; x.fillText(txt, X + 11, Yc + 1); x.textBaseline = "alphabetic"; return w; }
+const gtxt = p => { const g = grade(p); return g.g ? `${g.g} · ${g.t}` : "—"; };
+function reportItems(sp) {
+  const M = RP.M, CW = RP.W - 2 * M, it = [];
+  it.push({ h: 150, draw(x, y) {
+    x.fillStyle = "#4f46e5"; rrect(x, M, y, 44, 44, 11); x.fill(); x.fillStyle = "#fff"; rrect(x, M + 12, y + 9, 20, 26, 3); x.fill();
+    fnt(x, 20, 600); x.fillStyle = "#64748b"; x.fillText("Javob varaqasi · natijalar hisoboti", M + 58, y + 29);
+    fnt(x, 18); x.textAlign = "right"; x.fillText("Tayyorlandi: " + fmtDate(today()), M + CW, y + 29); x.textAlign = "left";
+    fnt(x, 42, 800); x.fillStyle = "#0f172a"; x.fillText(fit(x, sp.title, CW), M, y + 100);
+    fnt(x, 22); x.fillStyle = "#475569"; x.fillText(fit(x, sp.sub || "", CW), M, y + 134);
+  } });
+  if (sp.kpis) it.push({ h: 132, gap: 18, draw(x, y) {
+    const n = sp.kpis.length, gw = 16, w = (CW - gw * (n - 1)) / n;
+    sp.kpis.forEach(([l, v, g], i) => {
+      const X = M + i * (w + gw); x.fillStyle = "#f4f5fb"; rrect(x, X, y, w, 116, 16); x.fill();
+      fnt(x, 18, 600); x.fillStyle = "#64748b"; x.fillText(fit(x, l, w - 36), X + 18, y + 34);
+      let fs = 36; fnt(x, fs, 800); while (fs > 20 && x.measureText(v).width > w - 36) { fs -= 2; fnt(x, fs, 800); }
+      x.fillStyle = "#0f172a"; x.fillText(fit(x, v, w - 36), X + 18, y + 78);
+      if (g !== undefined && g !== null) pill(x, X + 18, y + 98, gtxt(g), grade(g).g, 15);
+    });
+  } });
+  if (sp.dist) it.push({ h: 64, gap: 12, draw(x, y) {
+    fnt(x, 20, 700); x.fillStyle = "#0f172a"; x.fillText("Baholar:", M, y + 38); let X = M + 100;
+    [5, 4, 3, 2].forEach(g => { X += pill(x, X, y + 31, `${g} · ${grade(g === 5 ? 90 : g === 4 ? 75 : g === 3 ? 60 : 10).t}: ${sp.dist[g]} ta`, g, 19) + 12; });
+  } });
+  if (sp.chart && sp.chart.labels.length > 1) it.push({ h: 330, gap: 14, draw(x, y) {
+    const { labels, series, title } = sp.chart; fnt(x, 22, 700); x.fillStyle = "#0f172a"; x.fillText(title, M, y + 26);
+    let lx = M + x.measureText(title).width + 30; fnt(x, 17, 600);
+    if (series.length > 1) series.forEach(s => { x.fillStyle = s.color; x.fillRect(lx, y + 17, 22, 4); x.fillStyle = "#475569"; x.fillText(s.name, lx + 30, y + 25); lx += x.measureText(s.name).width + 64; });
+    const L = M + 56, R = M + CW - 10, T = y + 50, B = y + 290, n = labels.length, X = i => L + i * (R - L) / (n - 1), Y = v => B - v * (B - T) / 100;
+    fnt(x, 15); x.textAlign = "right";
+    [0, 50, 100].forEach(v => { x.strokeStyle = v ? "#eef0f5" : "#cfd4e0"; x.lineWidth = 1.5; x.beginPath(); x.moveTo(L, Y(v)); x.lineTo(R, Y(v)); x.stroke(); x.fillStyle = "#8a94a8"; x.fillText(v + "%", L - 10, Y(v) + 5); });
+    x.setLineDash([6, 6]); [[86, "A’lo"], [71, "Yaxshi"], [56, "Qoniqarli"]].forEach(([v, t]) => { x.strokeStyle = "#e1e4ec"; x.beginPath(); x.moveTo(L, Y(v)); x.lineTo(R, Y(v)); x.stroke(); x.fillStyle = "#a5adbd"; x.fillText(`${t} ${v}%`, R, Y(v) - 6); }); x.setLineDash([]);
+    x.textAlign = "center"; const st = Math.ceil(n / 10); labels.forEach((l, i) => { if (i % st === 0 || i === n - 1) { x.fillStyle = "#8a94a8"; x.fillText(l, X(i), B + 26); } }); x.textAlign = "left";
+    series.forEach(s => {
+      x.strokeStyle = s.color; x.lineWidth = 3.5; x.lineJoin = "round"; if (s.dash) x.setLineDash([10, 8]); x.beginPath(); let st0 = false;
+      s.values.forEach((v, i) => { if (v == null) return; st0 ? x.lineTo(X(i), Y(v)) : x.moveTo(X(i), Y(v)); st0 = true; }); x.stroke(); x.setLineDash([]);
+      if (!s.dash) s.values.forEach((v, i) => { if (v == null) return; x.fillStyle = "#fff"; x.beginPath(); x.arc(X(i), Y(v), 8, 0, 7); x.fill(); x.fillStyle = s.color; x.beginPath(); x.arc(X(i), Y(v), 5.5, 0, 7); x.fill(); });
+    });
+  } });
+  if (sp.table) {
+    const cols = sp.table.cols, tw = cols.reduce((s, c) => s + c.w, 0), cx = []; let acc = M; cols.forEach(c => { cx.push(acc); acc += c.w / tw * CW; });
+    const cw = i => cols[i].w / tw * CW;
+    if (sp.table.title) it.push({ h: 44, gap: 14, draw(x, y) { fnt(x, 24, 700); x.fillStyle = "#0f172a"; x.fillText(sp.table.title, M, y + 30); } });
+    const head = { h: 48, draw(x, y) { x.fillStyle = "#f4f5fb"; rrect(x, M, y, CW, 48, 10); x.fill(); fnt(x, 16, 700); x.fillStyle = "#64748b"; cols.forEach((c, i) => { x.textAlign = c.al === "r" ? "right" : "left"; x.fillText(c.h.toUpperCase(), c.al === "r" ? cx[i] + cw(i) - 12 : cx[i] + 12, y + 31); }); x.textAlign = "left"; } };
+    it.push(head);
+    sp.table.rows.forEach(r => it.push({ h: 46, head, draw(x, y) {
+      x.strokeStyle = "#eef0f5"; x.lineWidth = 1.5; x.beginPath(); x.moveTo(M, y + 46); x.lineTo(M + CW, y + 46); x.stroke();
+      r.forEach((v, i) => {
+        const c = cols[i], X = c.al === "r" ? cx[i] + cw(i) - 12 : cx[i] + 12;
+        if (v && typeof v === "object" && "g" in v) { if (v.g !== null && v.g !== undefined) pill(x, cx[i] + 10, y + 23, gtxt(v.g), grade(v.g).g, 16); return; }
+        const s = v && typeof v === "object" ? v.t : v; fnt(x, 19, v && v.b ? 700 : 400); x.fillStyle = v && v.c ? v.c : "#0f172a";
+        x.textAlign = c.al === "r" ? "right" : "left"; x.fillText(fit(x, s, cw(i) - 20), X, y + 30); x.textAlign = "left";
+      });
+    } }));
+  }
+  if (sp.note) it.push({ h: 40, gap: 10, draw(x, y) { fnt(x, 18); x.fillStyle = "#64748b"; x.fillText(fit(x, sp.note, CW), M, y + 26); } });
+  if (sp.qgrid) {
+    it.push({ h: 44, gap: 20, draw(x, y) { fnt(x, 24, 700); x.fillStyle = "#0f172a"; x.fillText("Savollar tahlili (necha foiz to‘g‘ri topgan)", M, y + 30); } });
+    const per = 10, cwq = (CW - (per - 1) * 10) / per;
+    for (let i = 0; i < sp.qgrid.length; i += per) { const row = sp.qgrid.slice(i, i + per); it.push({ h: 70, draw(x, y) {
+      row.forEach((q, j) => { const X = M + j * (cwq + 10), g = q.p == null ? 0 : q.p >= 70 ? 5 : q.p >= 40 ? 3 : 2; x.fillStyle = GC[g][0]; rrect(x, X, y + 4, cwq, 58, 10); x.fill(); x.fillStyle = GC[g][1]; x.textAlign = "center"; fnt(x, 17, 700); x.fillText(q.t, X + cwq / 2, y + 28); fnt(x, 17); x.fillText(q.p == null ? "—" : q.p + "%", X + cwq / 2, y + 52); x.textAlign = "left"; });
+    } }); }
+  }
+  return it;
+}
+function renderReport(sp, paged) {
+  const items = reportItems(sp), M = RP.M, W = RP.W;
+  const mk = h => { const c = document.createElement("canvas"); c.width = W; c.height = h; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, W, h); return [c, x]; };
+  const foot = (x, h, t) => { fnt(x, 15); x.fillStyle = "#a5adbd"; x.fillText("Javob varaqasi", M, h - 30); x.textAlign = "right"; x.fillText(t, W - M, h - 30); x.textAlign = "left"; };
+  if (!paged) {
+    const H = M + items.reduce((s, i) => s + i.h + (i.gap || 0), 0) + 70; const [c, x] = mk(H); let y = M;
+    items.forEach(i => { y += i.gap || 0; i.draw(x, y); y += i.h; }); foot(x, H, ""); return [c];
+  }
+  const pages = []; let c, x, y; const np = () => { [c, x] = mk(RP.PH); pages.push([c, x]); y = M; }; np();
+  items.forEach(i => { const need = i.h + (i.gap || 0); if (y + need > RP.PH - M - 40) { np(); if (i.head) { i.head.draw(x, y); y += i.head.h; } } else y += i.gap || 0; i.draw(x, y); y += i.h; });
+  pages.forEach(([c, x], k) => foot(x, RP.PH, `${k + 1} / ${pages.length}`));
+  return pages.map(p => p[0]);
+}
+async function exportReport(sp, kind, name) {
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) { }
+  if (kind === "png") { const c = renderReport(sp, false)[0]; c.toBlob(b => download(name + ".png", b), "image/png"); return; }
+  if (!window.jspdf) { toast("PDF kutubxonasi yuklanmadi, sahifani yangilang"); return; }
+  const pages = renderReport(sp, true), doc = new jspdf.jsPDF({ unit: "mm", format: "a4", compress: true });
+  pages.forEach((c, i) => { if (i) doc.addPage(); doc.addImage(c.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297, undefined, "FAST"); });
+  await download(name + ".pdf", doc.output("blob"));
+}
+const expBtns = id => `<button class="btn s" id="${id}Pdf">${IC.dl} PDF</button><button class="btn s" id="${id}Png">${IC.img} Rasm</button>`;
+function bindExp(id, specFn, name) { $(id + "Pdf").onclick = () => exportReport(specFn(), "pdf", name); $(id + "Png").onclick = () => exportReport(specFn(), "png", name); }
+const distCounts = pcts => { const c = { 5: 0, 4: 0, 3: 0, 2: 0 }; pcts.forEach(p => { const g = grade(p).g; if (g) c[g]++; }); return c; };
+
+function testReportSpec(t, g) {
+  const rows = t.blanks.map(b => ({ b, s: scoreOf(t, b), name: b.sid ? stName(g, b.sid) : null })).sort((a, b) => (b.s.pct ?? -1) - (a.s.pct ?? -1));
+  const pcts = rows.map(r => r.s.pct).filter(x => x != null), a = pcts.length ? r1(avg(pcts)) : null;
+  const missing = g.students.filter(s => !t.blanks.some(b => b.sid === s.id));
+  return {
+    title: t.cfg.title || "Test natijalari", sub: `${g.name} · ${fmtDate(t.date)} · ${t.cfg.N} ta savol`,
+    kpis: [["Topshirdi", `${t.blanks.length}${g.students.length ? " / " + g.students.length : ""}`], ["O‘rtacha", a != null ? a + "%" : "—", a], ["Eng yuqori", pcts.length ? Math.max(...pcts) + "%" : "—"], ["Eng past", pcts.length ? Math.min(...pcts) + "%" : "—"]],
+    dist: distCounts(pcts),
+    table: { title: "Natijalar", cols: [{ h: "#", w: 5 }, { h: "ID", w: 6 }, { h: "O‘quvchi", w: 34 }, { h: "To‘g‘ri", w: 9, al: "r" }, { h: "Xato", w: 8, al: "r" }, { h: "Bo‘sh", w: 8, al: "r" }, { h: "%", w: 9, al: "r" }, { h: "Baho", w: 19 }],
+      rows: rows.map((r, i) => [i + 1, r.b.sid || "", r.name ? { t: r.name } : { t: "aniqlanmagan", c: "#b45309" }, { t: r.s.ok, b: 1 }, r.s.bad, r.s.emp, { t: r.s.pct ?? "—", b: 1 }, { g: r.s.pct }]) },
+    note: missing.length ? `Topshirmagan (${missing.length}): ${missing.map(s => s.name).join(", ")}` : "",
+    qgrid: Array.from({ length: t.cfg.N }, (_, i) => { const k = t.key[i] ?? -1; if (k < 0 || !rows.length) return { t: `${i + 1}`, p: null }; return { t: `${i + 1}·${LET[k]}`, p: Math.round(rows.filter(r => r.s.a[i] === k).length / rows.length * 100) }; })
+  };
+}
+function groupReportSpec(g) {
+  const ts = groupTests(g).filter(t => t.blanks.length), avgs = ts.map(testAvg), gAvg = avgs.filter(x => x != null).length ? r1(avg(avgs.filter(x => x != null))) : null;
+  const rows = g.students.map(s => ({ s, sm: studentSummary(g, s.id) })), ranked = rows.filter(r => r.sm.n).sort((a, b) => b.sm.avg - a.sm.avg);
+  const tr = sm => sm.n < 2 ? "—" : (sm.delta > 0 ? "▲ +" : sm.delta < 0 ? "▼ " : "") + sm.delta + "%";
+  return {
+    title: `${g.name} — reyting`, sub: `${g.students.length} o‘quvchi · ${ts.length} test${ts.length ? ` · ${fmtDate(ts[0].date)} – ${fmtDate(ts[ts.length - 1].date)}` : ""}`,
+    kpis: [["Guruh o‘rtachasi", gAvg != null ? gAvg + "%" : "—", gAvg], ["Oxirgi test", avgs.length ? avgs[avgs.length - 1] + "%" : "—"], ["Testlar", String(ts.length)], ["Eng yaxshi", ranked[0] ? ranked[0].s.name : "—"]],
+    dist: distCounts(ranked.map(r => r.sm.avg)),
+    chart: { title: "Testlar bo‘yicha guruh o‘rtachasi", labels: ts.map(t => shortDate(t.date)), series: [{ name: "Guruh", values: avgs, color: "#4f46e5" }] },
+    table: { title: "Reyting", cols: [{ h: "#", w: 5 }, { h: "ID", w: 6 }, { h: "O‘quvchi", w: 33 }, { h: "Test", w: 8, al: "r" }, { h: "O‘rtacha", w: 11, al: "r" }, { h: "Oxirgi", w: 10, al: "r" }, { h: "O‘zgarish", w: 11, al: "r" }, { h: "Daraja", w: 16 }],
+      rows: [...ranked.map((r, i) => [i + 1, r.s.id, r.s.name, `${r.sm.n}/${ts.length}`, { t: r.sm.avg + "%", b: 1 }, r.sm.last + "%", { t: tr(r.sm), c: r.sm.delta > 2 ? "#15803d" : r.sm.delta < -2 ? "#b91c1c" : "#64748b" }, { g: r.sm.avg }]),
+        ...rows.filter(r => !r.sm.n).map(r => ["", r.s.id, r.s.name, `0/${ts.length}`, { t: "—", c: "#8a94a8" }, "", "", { g: null }])] },
+    note: "Baholash: 86–100% — 5 (a’lo), 71–85% — 4 (yaxshi), 56–70% — 3 (qoniqarli), 55% gacha — 2."
+  };
+}
+function studentReportSpec(g, sid) {
+  const st = g.students.find(s => s.id === sid), sm = studentSummary(g, sid), ts = groupTests(g).filter(t => t.blanks.length);
+  const rank = g.students.map(s => ({ id: s.id, a: studentSummary(g, s.id).avg })).filter(x => x.a != null).sort((a, b) => b.a - a.a).findIndex(x => x.id === sid) + 1;
+  const nR = g.students.filter(s => studentSummary(g, s.id).n).length;
+  const trend = sm.n < 2 ? "" : sm.sl > 2 ? "Umumiy tendensiya: o‘sish" : sm.sl < -2 ? "Umumiy tendensiya: pasayish" : "Umumiy tendensiya: barqaror";
+  return {
+    title: st.name, sub: `ID ${st.id} · ${g.name}${trend ? " · " + trend : ""}`,
+    kpis: [["O‘rtacha", sm.avg != null ? sm.avg + "%" : "—", sm.avg], ["Oxirgi test", sm.last != null ? sm.last + "%" : "—"], ["Eng yaxshi", sm.best != null ? sm.best + "%" : "—"], ["Guruhdagi o‘rni", rank ? `${rank} / ${nR}` : "—"]],
+    chart: { title: "Natijalar dinamikasi", labels: ts.map(t => shortDate(t.date)), series: [{ name: "Guruh o‘rtachasi", values: ts.map(testAvg), color: "#a5adbd", dash: true }, { name: st.name, values: ts.map(t => { const r = resultOf(t, sid); return r ? r.pct : null; }), color: "#4f46e5" }] },
+    table: { title: "Testlar", cols: [{ h: "Sana", w: 13 }, { h: "Test", w: 33 }, { h: "To‘g‘ri", w: 11, al: "r" }, { h: "Natija", w: 12, al: "r" }, { h: "Guruh", w: 11, al: "r" }, { h: "Baho", w: 20 }],
+      rows: ts.slice().reverse().map(t => { const r = resultOf(t, sid), ga = testAvg(t); return [fmtDate(t.date), t.cfg.title, r ? `${r.ok}/${r.tot}` : "—", r && r.pct != null ? { t: r.pct + "%", b: 1 } : { t: "qatnashmagan", c: "#8a94a8" }, ga != null ? ga + "%" : "—", { g: r ? r.pct : null }]; }) },
+    note: "Baholash: 86–100% — 5 (a’lo), 71–85% — 4 (yaxshi), 56–70% — 3 (qoniqarli), 55% gacha — 2."
+  };
 }
 
 /* ============================ INIT ============================ */
