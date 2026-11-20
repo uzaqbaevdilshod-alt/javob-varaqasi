@@ -1201,6 +1201,7 @@ function viewHome() {
     return `<div class="gcard" data-g="${g.id}"><div class="av">${esc((g.name.replace(/[^\p{L}\p{N}]/gu, "") || "G").slice(0, 2).toUpperCase())}</div><div class="mid"><div class="nm">${esc(g.name)}</div><div class="ds">${g.students.length} o‘quvchi · ${ts.length} test</div></div>
       <div class="rt hide-s">${spark(avgs)}</div><div class="rt"><div class="pc">${a != null ? a + "%" : "—"}</div>${a != null ? gbadge(a) : ""}</div><span class="chev">${IC.chev}</span></div>`;
   }).join("")}</div>`;
+  h += `<div class="small mut" style="text-align:center;margin:22px 0 6px">Versiya ${APP_VER}</div>`;
   $("view").innerHTML = h;
   $("view").querySelectorAll(".gcard[data-g]").forEach(el => el.onclick = () => { ui.gtab = "tests"; ui.sq = ""; go("#g/" + el.dataset.g); });
   const hRender = () => {
@@ -2134,12 +2135,12 @@ function tabResultsMS(t, g) {
 }
 function msReportSpec(title, sub, list, C, grp) {
   const k = msKpis(list), c = {}; MS_GR.forEach(x => c[x] = 0); list.forEach(e => { if (e.r.baho) c[e.r.baho]++; });
-  const cols = [{ h: "O‘rin", w: 6, al: "r" }, { h: "ID", w: 6 }, { h: "O‘quvchi", w: grp ? 22 : 28 }, ...(grp ? [{ h: "Guruh", w: 11 }] : []), { h: "Algebra", w: 9, al: "r" }, { h: "Geometr.", w: 9, al: "r" }, { h: "Ball", w: 8, al: "r" }, { h: "Baho", w: 6 }, { h: "Foiz", w: 8, al: "r" }, { h: "BMBA", w: 7, al: "r" }];
+  const cols = [{ h: "O‘rin", w: 6, al: "r" }, { h: "ID", w: 6 }, { h: "O‘quvchi", w: grp ? 22 : 28 }, ...(grp ? [{ h: "Guruh", w: 11 }] : []), { h: "Algebra", w: 9, al: "r" }, { h: "Geometr.", w: 9, al: "r" }, { h: "Ball", w: 8, al: "r" }, { h: "Baho", w: 6 }, { h: "Foiz", w: 8, al: "r" }, { h: "BMBA", w: 7, al: "r" }, { h: "To‘g‘ri", w: 7, al: "r" }];
   return {
     title, sub,
     kpis: [["Topshirdi", String(k.n)], ["O‘rtacha ball", f2(k.avg)], ["Sertifikat (46+)", `${k.cert} / ${k.n}`], ["A va A+", String(k.top)]],
-    table: { title: "Natijalar (Rasch modeli)", cols, rows: list.map(e => { const r = e.r; return [r.rank ?? "", e.b.sid || "", e.name ? { t: e.name } : { t: "aniqlanmagan", c: "#b45309" }, ...(grp ? [e.g ? e.g.name : ""] : []), f2(r.alg), f2(r.geo), { t: f2(r.ball), b: 1 }, r.baho ? { t: r.baho, b: 1, c: MS_GC[r.baho] } : "—", r.pct != null ? f1(r.pct) + "%" : "—", r.bmba != null ? f1(r.bmba) : "—"]; }) },
-    notes: [`Baholar: ${MS_GR.map(x => `${x} — ${c[x]}`).join(", ")}`, `Rasch modeli: ${C.R.N} ta o‘quvchi asosida hisoblandi. Algebra 2/3, geometriya 1/3 ulush bilan.`]
+    table: { title: "Natijalar (Rasch modeli)", cols, rows: list.map(e => { const r = e.r; return [r.rank ?? "", e.b.sid || "", e.name ? { t: e.name } : { t: "aniqlanmagan", c: "#b45309" }, ...(grp ? [e.g ? e.g.name : ""] : []), f2(r.alg), f2(r.geo), { t: f2(r.ball), b: 1 }, r.baho ? { t: r.baho, b: 1, c: MS_GC[r.baho] } : "—", r.pct != null ? f1(r.pct) + "%" : "—", r.bmba != null ? f1(r.bmba) : "—", `${r.C}/55`]; }) },
+    notes: [`Baholar: ${MS_GR.map(x => `${x} — ${c[x]}`).join(", ")}`, C.R.N < 2 ? `Rasch bo‘yicha ball hisoblash uchun kamida 2 ta o‘quvchi kerak (hozir ${C.R.N} ta).` : `Rasch modeli: ${C.R.N} ta o‘quvchi asosida hisoblandi. Algebra 2/3, geometriya 1/3 ulush bilan.`]
   };
 }
 function testReportSpecMS(t, g) {
@@ -2536,7 +2537,12 @@ function loadCanvas(b) { return new Promise(res => { if (b.canvas || !b.img) ret
 document.addEventListener("touchmove", e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 /* ---- PWA ---- */
-if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => { });
+const APP_VER = 21;
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  const had = !!navigator.serviceWorker.controller; let done = false;
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => { r.update().catch(() => { }); document.addEventListener("visibilitychange", () => { if (!document.hidden) r.update().catch(() => { }); }); }).catch(() => { });
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (!had || done) return; done = true; if (!$("cam") || !$("cam").classList.contains("on")) location.reload(); else toast("Yangi versiya tayyor — ilovani qayta oching"); });
+}
 let deferredPrompt = null;
 const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredPrompt = e; $("instTxt").innerHTML = `📲 Ilovani telefonga o‘rnating — internetsiz ham ishlaydi. <button class="btn s p" id="instBtn" style="margin-left:6px">O‘rnatish</button>`; $("instBar").style.display = "block"; $("instBtn").onclick = async () => { deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; $("instBar").style.display = "none"; }; });
