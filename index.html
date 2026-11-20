@@ -865,6 +865,42 @@ function msId(idFills, thr, digits) {
 }
 if (typeof module !== "undefined") module.exports = Object.assign(module.exports || {}, { msAnalyze, msId });
 
+/* Milliy sertifikat — Rasch modeli (RASH_30000_natija.xlsx formulalarining aynan nusxasi).
+   rows: har bir o‘quvchi uchun 55 ta 0/1 (1–35, so‘ng 36a,36b,…,45b).
+   Algebra: 1–22, 31–32, 36a–40b · Geometriya: 23–30, 33–35, 41a–45b. */
+const RASCH_ALG = [...Array(22).keys(), 30, 31, ...Array.from({ length: 10 }, (_, i) => 35 + i)];
+const RASCH_GEO = [...Array.from({ length: 8 }, (_, i) => 22 + i), 32, 33, 34, ...Array.from({ length: 10 }, (_, i) => 45 + i)];
+function raschGrade(L) { return L == null ? "" : L < 46 ? "NC" : L < 50 ? "C" : L < 55 ? "C+" : L < 60 ? "B" : L < 65 ? "B+" : L < 70 ? "A" : "A+"; }
+function rasch(rows) {
+  const N = rows.length, n = 55, fin = v => v != null && isFinite(v);
+  const cnt = Array(n).fill(0); rows.forEach(r => r.forEach((v, i) => cnt[i] += v ? 1 : 0));
+  const P = cnt.map(c => !N || c === 0 || c === N ? null : c / N);
+  const B = P.map(p => p == null ? null : -Math.log(p / (1 - p)));
+  const W = Array(n).fill(null);
+  const subj = idx => { const bs = idx.map(i => B[i]).filter(v => v != null), mn = bs.length ? Math.min(...bs) : 0; idx.forEach(i => { if (B[i] != null) W[i] = B[i] - mn + 1; }); return idx.reduce((s, i) => s + (W[i] || 0), 0); };
+  const maxA = subj(RASCH_ALG), maxG = subj(RASCH_GEO);
+  const raw = (r, idx) => idx.reduce((s, i) => s + (r[i] ? W[i] || 0 : 0), 0);
+  const logit = (x, mx) => { const c = mx * 0.003, m = [c, x, mx - c].sort((a, b) => a - b)[1], v = Math.log(m / (mx - m)); return fin(v) ? v : null; };
+  const st = rows.map(r => { const C = r.reduce((s, v) => s + (v ? 1 : 0), 0), D = raw(r, RASCH_ALG), E = raw(r, RASCH_GEO); return { C, D, E, F: logit(D, maxA), G: logit(E, maxG) }; });
+  const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+  const sd = a => { if (a.length < 2) return null; const m = mean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1)); };
+  const Fs = st.map(s => s.F), Gs = st.map(s => s.G), okF = Fs.every(fin) && N > 0, okG = Gs.every(fin) && N > 0;
+  const mF = okF ? mean(Fs) : null, sF = okF ? sd(Fs) : null, mG = okG ? mean(Gs) : null, sG = okG ? sd(Gs) : null;
+  const res = st.map(s => {
+    const o = { C: s.C, algRaw: s.D, geoRaw: s.E, alg: null, geo: null, ball: null, pct: null, baho: "", bmba: null, rank: null };
+    if (s.C === 0) { o.alg = 0; o.geo = 0; o.ball = 0; }
+    else if (sF && sG) {
+      const H = (s.F - mF) / sF, I = (s.G - mG) / sG, ta = (50 + 10 * H) * 2 / 3, comb = ta + (50 + 10 * I) / 3;
+      const L = comb > 90 ? (comb - 90) / 100 + 90 : comb;
+      o.ball = L; o.alg = Math.round((comb > 90 ? ta * L / comb : ta) * 100) / 100; o.geo = L - o.alg; o.z = [H, I];
+    }
+    if (o.ball != null) { o.baho = raschGrade(o.ball); if (o.ball >= 46) { o.pct = o.ball >= 65 ? 100 : o.ball / 65 * 100; o.bmba = 93 * o.pct / 100 + 11; } }
+    return o;
+  });
+  res.map((o, i) => [o.ball, i]).filter(x => x[0] != null).sort((a, b) => b[0] - a[0] || a[1] - b[1]).forEach((x, k) => res[x[1]].rank = k + 1);
+  return { N, res, P, B, W, maxA, maxG, mean: [mF, mG], sd: [sF, sG] };
+}
+
 const MS = {"W":210,"H":297,"r":2.6,"mk":4.0,"markers":[[22.45,39.95],[74.95,39.95],[133.45,39.95],[187.45,39.95],[22.45,75.25],[74.95,75.25],[133.45,75.25],[187.45,75.25],[22.45,110.65],[74.95,110.65],[133.45,110.65],[187.45,110.65],[22.45,145.95],[74.95,145.95],[133.45,145.95],[187.45,145.95],[22.45,181.25],[74.95,181.25],[133.45,181.25],[187.45,181.25],[22.45,216.65],[74.95,216.65],[133.45,216.65],[187.45,216.65],[22.45,251.95],[74.95,251.95],[133.45,251.95],[187.45,251.95]],"id":[[[38.52,54.97],[38.53,61.94],[38.56,68.95],[38.57,75.93],[38.6,82.92],[38.6,89.87],[38.56,96.85],[38.54,103.85],[38.54,110.84],[38.57,117.85]],[[45.16,54.92],[45.19,61.94],[45.18,68.95],[45.19,75.91],[45.23,82.91],[45.22,89.9],[45.19,96.88],[45.17,103.86],[45.17,110.87],[45.18,117.86]],[[51.84,54.92],[51.81,61.94],[51.82,68.96],[51.8,75.9],[51.77,82.91],[51.78,89.9],[51.81,96.88],[51.83,103.86],[51.83,110.87],[51.82,117.86]],[[58.44,54.94],[58.47,61.94],[58.44,68.95],[58.43,75.93],[58.4,82.92],[58.4,89.87],[58.44,96.85],[58.46,103.85],[58.46,110.84],[58.46,117.83]]],"idDigits":[1,2,3,4,5,6,7,8,9,0],"mc":[{"q":1,"o":[[39.16,145.86],[46.46,145.86],[53.76,145.86],[61.06,145.86]]},{"q":2,"o":[[39.16,152.85],[46.46,152.85],[53.76,152.85],[61.06,152.85]]},{"q":3,"o":[[39.14,159.85],[46.44,159.85],[53.74,159.85],[61.04,159.85]]},{"q":4,"o":[[39.1,166.83],[46.4,166.83],[53.7,166.83],[61.0,166.83]]},{"q":5,"o":[[39.1,173.78],[46.4,173.78],[53.7,173.78],[61.0,173.78]]},{"q":6,"o":[[39.14,187.75],[46.44,187.75],[53.74,187.75],[61.04,187.75]]},{"q":7,"o":[[39.17,194.76],[46.47,194.76],[53.77,194.76],[61.07,194.76]]},{"q":8,"o":[[39.18,201.73],[46.48,201.73],[53.78,201.73],[61.08,201.73]]},{"q":9,"o":[[39.16,208.74],[46.46,208.74],[53.76,208.74],[61.06,208.74]]},{"q":10,"o":[[39.16,215.75],[46.46,215.75],[53.76,215.75],[61.06,215.75]]},{"q":11,"o":[[39.18,229.77],[46.48,229.77],[53.78,229.77],[61.08,229.77]]},{"q":12,"o":[[39.17,236.74],[46.47,236.74],[53.77,236.74],[61.07,236.74]]},{"q":13,"o":[[39.14,243.75],[46.44,243.75],[53.74,243.75],[61.04,243.75]]},{"q":14,"o":[[39.13,250.73],[46.43,250.73],[53.73,250.73],[61.03,250.73]]},{"q":15,"o":[[89.35,47.98],[96.65,47.98],[103.95,47.98],[111.25,47.98]]},{"q":16,"o":[[89.35,54.98],[96.65,54.98],[103.95,54.98],[111.25,54.98]]},{"q":17,"o":[[89.35,61.96],[96.65,61.96],[103.95,61.96],[111.25,61.96]]},{"q":18,"o":[[89.35,68.99],[96.65,68.99],[103.95,68.99],[111.25,68.99]]},{"q":19,"o":[[89.35,75.96],[96.65,75.96],[103.95,75.96],[111.25,75.96]]},{"q":20,"o":[[89.35,82.89],[96.65,82.89],[103.95,82.89],[111.25,82.89]]},{"q":21,"o":[[89.35,96.82],[96.65,96.82],[103.95,96.82],[111.25,96.82]]},{"q":22,"o":[[89.35,103.8],[96.65,103.8],[103.95,103.8],[111.25,103.8]]},{"q":23,"o":[[89.35,110.84],[96.65,110.84],[103.95,110.84],[111.25,110.84]]},{"q":24,"o":[[89.35,117.84],[96.65,117.84],[103.95,117.84],[111.25,117.84]]},{"q":25,"o":[[89.35,124.85],[96.65,124.85],[103.95,124.85],[111.25,124.85]]},{"q":26,"o":[[89.35,138.86],[96.65,138.86],[103.95,138.86],[111.25,138.86]]},{"q":27,"o":[[89.35,145.86],[96.65,145.86],[103.95,145.86],[111.25,145.86]]},{"q":28,"o":[[89.35,152.9],[96.65,152.9],[103.95,152.9],[111.25,152.9]]},{"q":29,"o":[[89.35,159.89],[96.65,159.89],[103.95,159.89],[111.25,159.89]]},{"q":30,"o":[[89.35,166.84],[96.65,166.84],[103.95,166.84],[111.25,166.84]]},{"q":31,"o":[[89.35,180.74],[96.65,180.74],[103.95,180.74],[111.25,180.74]]},{"q":32,"o":[[89.35,187.71],[96.65,187.71],[103.95,187.71],[111.25,187.71]]},{"q":33,"o":[[89.35,215.75],[96.65,215.75],[103.95,215.75],[111.25,215.75],[118.55,215.75],[125.85,215.75]]},{"q":34,"o":[[89.35,222.78],[96.65,222.78],[103.95,222.78],[111.25,222.78],[118.55,222.78],[125.85,222.78]]},{"q":35,"o":[[89.35,229.78],[96.65,229.78],[103.95,229.78],[111.25,229.78],[118.55,229.78],[125.85,229.78]]}],"wr":[{"q":36,"p":"a","c":[156.75,61.96]},{"q":36,"p":"b","c":[156.75,68.99]},{"q":37,"p":"a","c":[156.75,75.96]},{"q":37,"p":"b","c":[156.75,82.89]},{"q":38,"p":"a","c":[156.75,89.86]},{"q":38,"p":"b","c":[156.75,103.8]},{"q":39,"p":"a","c":[156.75,110.84]},{"q":39,"p":"b","c":[156.75,117.84]},{"q":40,"p":"a","c":[156.75,124.85]},{"q":40,"p":"b","c":[156.75,131.85]},{"q":41,"p":"a","c":[156.75,145.86]},{"q":41,"p":"b","c":[156.75,152.9]},{"q":42,"p":"a","c":[156.75,159.88]},{"q":42,"p":"b","c":[156.75,166.84]},{"q":43,"p":"a","c":[156.75,173.81]},{"q":43,"p":"b","c":[156.75,187.71]},{"q":44,"p":"a","c":[156.75,194.73]},{"q":44,"p":"b","c":[156.75,201.72]},{"q":45,"p":"a","c":[156.75,208.72]},{"q":45,"p":"b","c":[156.75,215.75]}],"header":[16.9,8.9,192.1,31.1],"idbox":[35.1,44.5,62.0,121.6]};
 
 </script>
@@ -928,6 +964,7 @@ const saveGroup = g => DB.put("groups", g);
 const tmr = {};
 function saveTest(t) { clearTimeout(tmr[t.id]); tmr[t.id] = setTimeout(() => DB.put("tests", Object.assign({}, t, { blanks: t.blanks.map(b => { const { canvas, ...r } = b; return r; }) })), 250); }
 const groupTests = g => tests.filter(t => t.groupId === g.id).sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.created - b.created);
+const regTests = g => groupTests(g).filter(t => !isMS(t));
 const stName = (g, sid) => (g.students.find(s => s.id === sid) || {}).name;
 const allIds = () => new Set(groups.flatMap(g => g.students.map(s => s.id)));
 function nextId(g, taken) { taken = taken || allIds(); for (let i = 1; i < 10000; i++) { const id = String(i).padStart(4, "0"); if (!taken.has(id) && !g.students.some(s => s.id === id)) return id; } return null; }
@@ -978,7 +1015,7 @@ function scoreOf(t, b) {
 function resultOf(t, sid) { const b = t.blanks.find(x => x.sid === sid); return b ? scoreOf(t, b) : null; }
 function testAvg(t) { const p = t.blanks.map(b => scoreOf(t, b).pct).filter(x => x != null); return p.length ? r1(avg(p)) : null; }
 function studentHistory(g, sid) {
-  return groupTests(g).map(t => { const s = resultOf(t, sid); return s && s.pct != null ? { t, s, pct: s.pct } : null; }).filter(Boolean);
+  return regTests(g).map(t => { const s = resultOf(t, sid); return s && s.pct != null ? { t, s, pct: s.pct } : null; }).filter(Boolean);
 }
 function slope(v) { const n = v.length; if (n < 2) return 0; const mx = (n - 1) / 2, my = avg(v); let a = 0, b = 0; v.forEach((y, x) => { a += (x - mx) * (y - my); b += (x - mx) ** 2; }); return a / b; }
 function studentSummary(g, sid) {
@@ -1145,6 +1182,7 @@ function route() {
   if (h[0] === "g" && G(h[1])) viewGroup(G(h[1]));
   else if (h[0] === "t" && T(h[1])) viewTest(T(h[1]));
   else if (h[0] === "s" && G(h[1])) viewStudent(G(h[1]), h[2]);
+  else if (h[0] === "ms") viewMS();
   else viewHome();
 }
 
@@ -1155,10 +1193,11 @@ function viewHome() {
   let h = `<div class="hero"><h2>Assalomu alaykum!</h2><p>Guruh tanlang yoki yangisini oching.</p>
     <div class="hs"><div><b>${groups.length}</b><span>guruh</span></div><div><b>${nSt}</b><span>o‘quvchi</span></div><div><b>${tests.length}</b><span>test</span></div><div><b>${nRes}</b><span>tekshirilgan</span></div></div></div>
     ${nSt ? `<div class="search" style="margin-top:14px">${IC.search}<input type="search" id="hQ" placeholder="O‘quvchini qidirish: ism yoki ID" value="${esc(ui.hq || "")}" autocomplete="off"></div><div id="hRes"></div>` : ""}
+    ${tests.some(isMS) ? (() => { const cs = msCohorts(), n = cs.reduce((s, c) => s + c.R.N, 0); return `<div class="gcard" id="hMS" style="margin-top:14px"><div class="av" style="background:#fef3c7">🎓</div><div class="mid"><div class="nm">Milliy sertifikat natijalari</div><div class="ds">${cs.length} ta mock · ${n} ta natija · Rasch modeli</div></div><span class="chev">${IC.chev}</span></div>`; })() : ""}
     <div class="sec"><h3>Guruhlar</h3><button class="btn s p" id="hNew">${IC.plus} Guruh ochish</button></div>`;
   if (!groups.length) h += `<div class="card empty"><div class="big">👥</div><b>Hali guruh yo‘q</b>Sinf yoki guruh oching, o‘quvchilarni kiriting — har biriga 4 xonali ID beriladi.<br><br><button class="btn p" id="hNew2">${IC.plus} Birinchi guruhni ochish</button></div>`;
   else h += `<div class="list">${groups.slice().sort((a, b) => a.name.localeCompare(b.name)).map(g => {
-    const ts = groupTests(g), avgs = ts.map(testAvg), all = avgs.filter(x => x != null), a = all.length ? r1(avg(all)) : null;
+    const ts = groupTests(g), avgs = regTests(g).map(testAvg), all = avgs.filter(x => x != null), a = all.length ? r1(avg(all)) : null;
     return `<div class="gcard" data-g="${g.id}"><div class="av">${esc((g.name.replace(/[^\p{L}\p{N}]/gu, "") || "G").slice(0, 2).toUpperCase())}</div><div class="mid"><div class="nm">${esc(g.name)}</div><div class="ds">${g.students.length} o‘quvchi · ${ts.length} test</div></div>
       <div class="rt hide-s">${spark(avgs)}</div><div class="rt"><div class="pc">${a != null ? a + "%" : "—"}</div>${a != null ? gbadge(a) : ""}</div><span class="chev">${IC.chev}</span></div>`;
   }).join("")}</div>`;
@@ -1172,6 +1211,7 @@ function viewHome() {
     box.querySelectorAll(".srow").forEach(el => el.onclick = () => go(`#s/${el.dataset.g}/${el.dataset.s}`));
   };
   if ($("hQ")) { $("hQ").oninput = () => { ui.hq = $("hQ").value; hRender(); }; hRender(); }
+  if ($("hMS")) $("hMS").onclick = () => { ui.mstab = "res"; ui.msg = ""; go("#ms"); };
   ($("hNew") || {}).onclick = newGroupDlg; if ($("hNew2")) $("hNew2").onclick = newGroupDlg;
 }
 function newGroupDlg() {
@@ -1235,7 +1275,7 @@ function groupTestsView(g, ts) {
     const a = testAvg(t), done = new Set(t.blanks.map(b => b.sid).filter(Boolean)).size, ml = isML(t), ms = isMS(t), keyN = ml || ms ? t.key.mc.filter(k => k >= 0).length : t.key.filter(k => k >= 0).length, keyT = ml ? ML.mc.length : ms ? MS.mc.length : t.cfg.N;
     return `<div class="gcard" data-t="${t.id}"><div class="av" style="font-size:12px;line-height:1.1;text-align:center">${shortDate(t.date) || "—"}</div><div class="mid"><div class="nm">${esc(t.cfg.title || "Nomsiz test")}</div>
       <div class="ds">${ml ? "🎧📖 Multilevel" : ms ? "🎓 Milliy sertifikat" : t.cfg.N + " savol"} · ${t.blanks.length} ta natija${g.students.length ? ` · ${done}/${g.students.length} o‘quvchi` : ""}${keyN < keyT ? ` · <span style="color:var(--warn)">kalit ${keyN}/${keyT}</span>` : ""}</div></div>
-      <div class="rt"><div class="pc">${a != null ? a + "%" : "—"}</div>${a != null ? gbadge(a) : ""}</div><span class="chev">${IC.chev}</span></div>`;
+      <div class="rt">${ms ? (() => { const b = msTestAvg(t); return `<div class="pc">${b != null ? f1(b) : "—"}</div>${b != null ? `<span class="small mut">o‘rt. ball</span>` : ""}`; })() : `<div class="pc">${a != null ? a + "%" : "—"}</div>${a != null ? gbadge(a) : ""}`}</div><span class="chev">${IC.chev}</span></div>`;
   }).join("")}</div>`;
   $("view").innerHTML = h;
   $("tNew").onclick = () => newTest(g); $("tNewML").onclick = () => newMLTest(g); $("tNewMS").onclick = () => newMSTest(g);
@@ -1295,8 +1335,10 @@ function editStudent(g, sid) {
   });
 }
 function groupStats(g) {
-  const ts = groupTests(g).filter(t => t.blanks.length);
-  if (!ts.length) { $("view").innerHTML = `<div class="card empty"><div class="big">📊</div><b>Statistika uchun natija yo‘q</b>Test yarating va blankalarni skanerlang — shu yerda guruh va har bir o‘quvchining darajasi chiqadi.</div>`; return; }
+  const ts = regTests(g).filter(t => t.blanks.length), msN = groupTests(g).filter(t => isMS(t) && t.blanks.length).length;
+  const msLink = msN ? `<div class="gcard" id="goMSg" style="margin-bottom:14px"><div class="av">🎓</div><div class="mid"><div class="nm">Milliy sertifikat natijalari</div><div class="ds">${msN} ta test · Rasch modeli bo‘yicha alohida bo‘limda</div></div><span class="chev">${IC.chev}</span></div>` : "";
+  const bindMS = () => { if ($("goMSg")) $("goMSg").onclick = () => { ui.msg = g.id; ui.mstab = "res"; const c = msCohorts().filter(c => c.groups.includes(g)).pop(); if (c) ui.msc = c.key; go("#ms"); }; };
+  if (!ts.length) { $("view").innerHTML = msLink + `<div class="card empty"><div class="big">📊</div><b>Statistika uchun natija yo‘q</b>Test yarating va blankalarni skanerlang — shu yerda guruh va har bir o‘quvchining darajasi chiqadi.${msN ? "<br><br>Milliy sertifikat natijalari yuqoridagi alohida bo‘limda." : ""}</div>`; bindMS(); return; }
   const avgs = ts.map(testAvg), gAvg = r1(avg(avgs.filter(x => x != null)));
   const last = avgs[avgs.length - 1], prev = avgs.length > 1 ? avgs[avgs.length - 2] : null;
   const rows = g.students.map(s => ({ s, sm: studentSummary(g, s.id) }));
@@ -1305,7 +1347,7 @@ function groupStats(g) {
   const attention = rows.filter(r => r.sm.n && (r.sm.avg < 56 || (r.sm.delta != null && r.sm.delta <= -15)));
   const missed = g.students.filter(s => !lastT.blanks.some(b => b.sid === s.id));
   const best = ranked[0];
-  let h = `<div class="kpis">
+  let h = msLink + `<div class="kpis">
     <div class="kpi"><span>Guruh o‘rtachasi</span><b>${gAvg}%</b>${gbadge(gAvg)}</div>
     <div class="kpi"><span>Oxirgi test</span><b>${last ?? "—"}%</b>${prev != null ? `<em class="${last >= prev ? "up" : "down"}">${last >= prev ? "▲ +" : "▼ "}${r1(last - prev)}% oldingiga nisbatan</em>` : `<span>${esc(lastT.cfg.title)}</span>`}</div>
     <div class="kpi"><span>Testlar</span><b>${ts.length}</b><span>${g.students.length} o‘quvchi</span></div>
@@ -1320,7 +1362,7 @@ function groupStats(g) {
     ${rows.filter(r => !r.sm.n).map(r => `<tr class="cl" data-s="${r.s.id}"><td></td><td><span class="idb">${r.s.id}</span></td><td>${esc(r.s.name)}</td><td class="num">0/${ts.length}</td><td class="num mut">—</td><td></td><td></td><td></td><td>${gbadge(null)}</td></tr>`).join("")}
     </table></div></div>`;
   h += matrixHtml(g, ts);
-  $("view").innerHTML = h;
+  $("view").innerHTML = h; bindMS();
   $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${g.id}/${el.dataset.s}`));
   $("view").querySelectorAll(".mtx [data-t]").forEach(el => el.onclick = () => { ui.ttab = "results"; go("#t/" + el.dataset.t); });
   bindExp("gx", () => groupReportSpec(g), `${safeName(g.name)}-reyting`);
@@ -1336,7 +1378,7 @@ function groupStats(g) {
 
 /* ---- Ballar jadvali: o‘quvchi × test ---- */
 function matrixData(g, ts) {
-  ts = ts || groupTests(g).filter(t => t.blanks.length);
+  ts = ts || regTests(g).filter(t => t.blanks.length);
   const rows = g.students.map(s => {
     const cells = ts.map(t => resultOf(t, s.id));
     const got = cells.filter(c => c && c.pct != null), ok = got.reduce((a, c) => a + c.ok, 0), tot = got.reduce((a, c) => a + c.tot, 0);
@@ -1379,7 +1421,8 @@ function viewStudent(g, sid) {
   ui.gtab = "students";
   setBar({ title: st.name, sub: `ID ${st.id} · ${g.name}`, back: "#g/" + g.id, action: `<button class="ib" id="stEdit" aria-label="Tahrirlash">${IC.more}</button>` });
   $("stEdit").onclick = () => editStudent(g, sid);
-  const sm = studentSummary(g, sid), ts = groupTests(g).filter(t => t.blanks.length);
+  const sm = studentSummary(g, sid), ts = regTests(g).filter(t => t.blanks.length), msCard = msStudentCard(sid);
+  if (!sm.n && msCard) { $("view").innerHTML = msCard; $("view").querySelectorAll("[data-t]").forEach(el => el.onclick = () => { ui.ttab = "results"; go("#t/" + el.dataset.t); }); return; }
   if (!sm.n) { $("view").innerHTML = `<div class="card empty"><div class="big">🧑‍🎓</div><b>Hali natija yo‘q</b>${esc(st.name)} ning blankasi skanerlangach, shu yerda darajasi va o‘sish dinamikasi chiqadi.<br><br>Blankadagi ID: <span class="idb">${st.id}</span></div>`; return; }
   const gr = grade(sm.avg);
   const rank = g.students.map(s => ({ id: s.id, a: studentSummary(g, s.id).avg })).filter(x => x.a != null).sort((a, b) => b.a - a.a).findIndex(x => x.id === sid) + 1;
@@ -1404,7 +1447,7 @@ function viewStudent(g, sid) {
   h += `<div class="card"><h2>Natijalar dinamikasi</h2><div class="legend"><span><i style="background:#4f46e5"></i>${esc(st.name)}</span><span><i style="background:#a5adbd"></i>Guruh o‘rtachasi</span></div>
     ${lineChart(ts.map(t => shortDate(t.date)), [{ name: "Guruh o‘rtachasi", values: groupAvg, color: "#a5adbd", dash: true }, { name: st.name, values: mine, color: "#4f46e5" }], { bands: true, tip: i => ts[i].cfg.title })}</div>`;
   h += `<div class="card"><h2>Testlar</h2><div class="tscroll"><table><tr><th>Sana</th><th>Test</th><th class="num">To‘g‘ri</th><th class="num">Natija</th><th class="num">Guruh</th><th>Baho</th></tr>
-    ${ts.slice().reverse().map(t => { const r = resultOf(t, sid), ga = testAvg(t); return `<tr class="cl" data-t="${t.id}"><td>${fmtDate(t.date)}</td><td>${esc(t.cfg.title)}</td><td class="num">${r ? r.ok + "/" + r.tot : "—"}</td><td class="num"><b>${r && r.pct != null ? r.pct + "%" : '<span class="mut">qatnashmagan</span>'}</b></td><td class="num mut">${ga ?? "—"}%</td><td>${r ? gbadge(r.pct) : ""}</td></tr>`; }).join("")}</table></div></div>`;
+    ${ts.slice().reverse().map(t => { const r = resultOf(t, sid), ga = testAvg(t); return `<tr class="cl" data-t="${t.id}"><td>${fmtDate(t.date)}</td><td>${esc(t.cfg.title)}</td><td class="num">${r ? r.ok + "/" + r.tot : "—"}</td><td class="num"><b>${r && r.pct != null ? r.pct + "%" : '<span class="mut">qatnashmagan</span>'}</b></td><td class="num mut">${ga ?? "—"}%</td><td>${r ? gbadge(r.pct) : ""}</td></tr>`; }).join("")}</table></div></div>` + msCard;
   $("view").innerHTML = h;
   $("view").querySelectorAll("[data-t]").forEach(el => el.onclick = () => { ui.ttab = "results"; go("#t/" + el.dataset.t); });
   bindExp("sx", () => studentReportSpec(g, sid), `${safeName(st.name)}-hisobot`);
@@ -1984,8 +2027,9 @@ function tabKeyMS(t) {
 function renderBlanksMS(t, g) {
   const box = $("blanks"); if (!box) return; box.innerHTML = ""; setTimeout(() => applyFilter("bq", "#blanks .bk"), 0);
   const cnt = {}; t.blanks.forEach(b => { if (b.sid) cnt[b.sid] = (cnt[b.sid] || 0) + 1; });
+  const C = msCohort(t);
   t.blanks.slice().reverse().forEach(b => {
-    const sc = msScore(t, b), el = document.createElement("div"); el.className = "bk"; el.dataset.fid = b.sid || ""; el.dataset.fnm = (b.sid && stName(g, b.sid)) || "aniqlanmagan";
+    const sc = msScore(t, b), rr = (C.by.get(b) || {}).r, el = document.createElement("div"); el.className = "bk"; el.dataset.fid = b.sid || ""; el.dataset.fnm = (b.sid && stName(g, b.sid)) || "aniqlanmagan";
     const cv = msOverlay(t, b); cv.onclick = () => zoom(cv); cv.style.maxHeight = "460px"; cv.style.objectFit = "contain"; cv.style.background = "#f4f5fb"; el.appendChild(cv);
     let chip;
     if (b.sid && cnt[b.sid] > 1) chip = `<span class="chip bad">⚠ Bu o‘quvchi ${cnt[b.sid]} marta skanerlangan</span>`;
@@ -1994,8 +2038,8 @@ function renderBlanksMS(t, g) {
     else chip = `<span class="chip warn">${b.detId ? `ID ${b.detId} guruhda yo‘q` : "ID aniqlanmadi"} — o‘quvchini tanlang</span>`;
     const bd = document.createElement("div"); bd.className = "bd";
     bd.innerHTML = `<div class="hd"><select><option value="">— O‘quvchini tanlang —</option>${g.students.map(s => `<option value="${s.id}" ${s.id === b.sid ? "selected" : ""}>${s.id} · ${esc(s.name)}</option>`).join("")}</select>
-      <span class="score">${sc.ok}<small>/${sc.tot}${sc.pct != null ? " · " + sc.pct + "%" : ""}</small></span><button class="ib" title="O‘chirish" style="width:34px;height:34px">✕</button></div>
-      ${chip}${sc.pct != null ? " " + gbadge(sc.pct) : ""}
+      <span class="score">${rr && rr.ball != null ? f2(rr.ball) : sc.ok}<small>${rr && rr.ball != null ? " ball" : "/" + sc.tot}</small></span><button class="ib" title="O‘chirish" style="width:34px;height:34px">✕</button></div>
+      ${chip}${rr && rr.ball != null ? " " + msBadge(rr) : ""}
       <div class="mlSc"><span>📝 1–35: <b>${sc.P1.ok}/${sc.P1.tot}</b></span><span>✍️ 36–45: <b>${sc.P2.ok}/${sc.P2.tot}</b></span></div>
       <div class="small mut" style="margin-top:10px">1–35 (bosib tuzatish mumkin)</div>
       <div class="ans" data-k="mc">${sc.a.map((v, i) => { const kk = t.key.mc[i] ?? -1; const cl = v === -2 ? "mul" : v === -1 ? "emp" : kk < 0 ? "" : v === kk ? "ok" : "bad"; return `<span class="a ${cl}${b.over && b.over[i] !== undefined ? " ed" : ""}" data-i="${i}">${MS.mc[i].q}${v >= 0 ? MS_L[v] : v === -2 ? "?" : "–"}</span>`; }).join("")}</div>
@@ -2009,48 +2053,171 @@ function renderBlanksMS(t, g) {
     el.appendChild(bd); box.appendChild(el);
   });
 }
+/* ---- Milliy sertifikat: Rasch hisobi (RASH_30000_natija.xlsx) ---- */
+const MS_GR = ["A+", "A", "B+", "B", "C+", "C", "NC"];
+const MS_GC = { "A+": "#15803d", "A": "#16a34a", "B+": "#2563eb", "B": "#3b82f6", "C+": "#d97706", "C": "#ca8a04", "NC": "#dc2626" };
+const f2 = v => v == null ? "—" : (Math.round(v * 100) / 100).toFixed(2);
+const f1 = v => v == null ? "—" : String(r1(v));
+function msBadge(o) { if (!o || o.ball == null) return `<span class="gb g0"><span class="t">—</span></span>`; const c = MS_GC[o.baho]; return `<span class="gb" style="background:${c}1c;color:${c}">${o.baho}</span>`; }
+function msCKey(t) { return norm(t.cfg.title || "") + "|" + t.key.mc.join(","); }
+function msVec(t, b) { const s = msScore(t, b); return MS.mc.map((m, i) => t.key.mc[i] >= 0 && s.a[i] === t.key.mc[i] ? 1 : 0).concat(s.wv.map(v => v ? 1 : 0)); }
+function stAny(sid, g) { const s = g && g.students.find(x => x.id === sid); if (s) return { s, g }; for (const x of groups) { const y = x.students.find(z => z.id === sid); if (y) return { s: y, g: x }; } return null; }
+/* Bir xil nomli va bir xil kalitli Milliy sertifikat testlari bitta to‘plam (kogorta) sifatida birga hisoblanadi */
+function msCohort(t) {
+  const k = msCKey(t), ts = tests.filter(x => isMS(x) && msCKey(x) === k).sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.created - b.created);
+  const ent = []; ts.forEach(x => x.blanks.forEach(b => ent.push({ t: x, b, g: G(x.groupId) })));
+  const last = {}; ent.forEach(e => { const s = e.b.sid; if (s && (!last[s] || (e.b.ts || 0) >= (last[s].b.ts || 0))) last[s] = e; });
+  const rows = ent.filter(e => !e.b.sid || last[e.b.sid] === e);
+  const R = rasch(rows.map(e => msVec(e.t, e.b)));
+  rows.forEach((e, i) => { e.r = R.res[i]; const f = e.b.sid ? stAny(e.b.sid, e.g) : null; e.name = f ? f.s.name : null; });
+  const by = new Map(); rows.forEach(e => by.set(e.b, e)); ent.forEach(e => { if (!by.has(e.b)) by.set(e.b, Object.assign({}, last[e.b.sid], { dup: true })); });
+  const dates = ts.map(x => x.date).filter(Boolean).sort();
+  return { key: k, ts, rows, by, R, title: ts[0] ? ts[0].cfg.title : "", date: dates[dates.length - 1] || "", groups: [...new Set(ts.map(x => x.groupId))].map(G).filter(Boolean) };
+}
+function msCohorts() {
+  const seen = new Set(), out = [];
+  tests.filter(isMS).forEach(t => { const k = msCKey(t); if (seen.has(k)) return; seen.add(k); const c = msCohort(t); if (c.rows.length) out.push(c); });
+  return out.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+}
+function msTestAvg(t, C) { C = C || msCohort(t); const v = t.blanks.map(b => (C.by.get(b) || {}).r).filter(r => r && r.ball != null).map(r => r.ball); return v.length ? avg(v) : null; }
+function msDistHtml(list) {
+  const c = {}; MS_GR.forEach(g => c[g] = 0); list.forEach(r => { if (r && r.baho) c[r.baho]++; }); const mx = Math.max(1, ...Object.values(c));
+  return `<div class="dist">${MS_GR.map(g => `<div class="dr" style="grid-template-columns:64px 1fr 34px"><span><span class="gb" style="background:${MS_GC[g]}1c;color:${MS_GC[g]}">${g}</span></span><div class="tr"><i style="width:${c[g] / mx * 100}%;background:${MS_GC[g]}"></i></div><b class="num">${c[g]}</b></div>`).join("")}</div>
+    <div class="small mut" style="margin-top:10px">Shkala: 70+ — A+, 65–69.99 — A, 60 — B+, 55 — B, 50 — C+, 46 — C, 46 dan past — NC (sertifikat berilmaydi).</div>`;
+}
+function msKpis(list) {
+  const b = list.map(e => e.r.ball).filter(v => v != null), cert = list.filter(e => e.r.ball != null && e.r.ball >= 46).length, top = list.filter(e => e.r.baho === "A" || e.r.baho === "A+").length;
+  return { n: list.length, avg: b.length ? avg(b) : null, best: b.length ? Math.max(...b) : null, cert, top };
+}
+function msRaschNote(C) {
+  const N = C.R.N, gn = C.groups.map(g => g.name);
+  if (N < 2) return `<div class="warnbox" style="margin-bottom:12px">Rasch bo‘yicha ball hisoblash uchun kamida 2 ta o‘quvchi natijasi kerak. Hozir: ${N} ta.</div>`;
+  return `<div class="note" style="margin-bottom:12px">📐 <b>Rasch modeli</b> bo‘yicha hisoblandi: <b>${N}</b> ta o‘quvchi asosida${gn.length > 1 ? ` (${gn.map(esc).join(", ")} guruhlari birga)` : ""}. Har bir savolning og‘irligi qatnashchilar natijasiga qarab aniqlanadi: o‘quvchilar ko‘payishi bilan ballar o‘zgarishi mumkin.${N < 20 ? " <b>O‘quvchilar kam — ballar taxminiy.</b>" : ""}</div>`;
+}
+function msCsv(rows, name) {
+  const head = ["O'rin", "ID", "F.I.Sh", "Guruh", "Jami to'g'ri", "Algebra xom ball", "Geometriya xom ball", "Algebra bali", "Geometriya bali", "Umumiy ball", "Foiz (%)", "Baho", "BMBA ball", ...MS.mc.map(m => String(m.q)), ...MS.wr.map(m => m.q + "(" + m.p + ")")];
+  const body = rows.map(e => { const r = e.r, v = msVec(e.t, e.b); return [r.rank ?? "", e.b.sid || "", e.name || "aniqlanmagan", e.g ? e.g.name : "", r.C, r.algRaw.toFixed(4), r.geoRaw.toFixed(4), r.alg ?? "", r.geo != null ? f2(r.geo) : "", r.ball != null ? f2(r.ball) : "", r.pct != null ? f2(r.pct) : "", r.baho, r.bmba != null ? f2(r.bmba) : "", ...v]; });
+  const csv = [head, ...body].map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(";")).join("\r\n");
+  download(name, new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+}
+const msRowHtml = (e, grp) => { const r = e.r; return `<tr data-fid="${e.b.sid || ""}" data-fnm="${esc(e.name || "aniqlanmagan")}" ${e.b.sid && e.g ? `class="cl" data-s="${e.g.id}/${e.b.sid}"` : ""}><td>${r.rank ?? ""}</td><td>${e.b.sid ? `<span class="idb">${e.b.sid}</span>` : ""}</td><td>${e.name ? esc(e.name) : `<span style="color:var(--warn)">aniqlanmagan</span>`}</td>${grp ? `<td class="small">${esc(e.g ? e.g.name : "")}</td>` : ""}<td class="num">${f2(r.alg)}</td><td class="num">${f2(r.geo)}</td><td class="num"><b>${f2(r.ball)}</b></td><td>${msBadge(r)}</td><td class="num">${r.pct != null ? f1(r.pct) + "%" : "—"}</td><td class="num">${r.bmba != null ? f1(r.bmba) : "—"}</td><td class="num mut">${r.C}/55</td></tr>`; };
+const msHead = grp => `<tr><th>O‘rin</th><th>ID</th><th>O‘quvchi</th>${grp ? "<th>Guruh</th>" : ""}<th class="num">Algebra</th><th class="num">Geometriya</th><th class="num">Umumiy ball</th><th>Baho</th><th class="num">Foiz</th><th class="num">BMBA</th><th class="num">To‘g‘ri</th></tr>`;
+const msSort = list => list.slice().sort((a, b) => (a.r.rank ?? 1e9) - (b.r.rank ?? 1e9));
+
 function tabResultsMS(t, g) {
   if (!t.blanks.length) { $("view").innerHTML = `<div class="card empty"><div class="big">📋</div><b>Hali natija yo‘q</b>“Skaner” bo‘limida blankalarni suratga oling.<br><br><button class="btn p" id="goScan">${IC.cam} Skanerlash</button></div>`; $("goScan").onclick = () => { ui.ttab = "scan"; viewTest(t); }; return; }
-  const rows = t.blanks.map(b => ({ b, s: msScore(t, b), name: b.sid ? stName(g, b.sid) : null })).sort((a, b) => (b.s.pct ?? -1) - (a.s.pct ?? -1));
-  const pcts = rows.map(r => r.s.pct).filter(x => x != null), a = pcts.length ? r1(avg(pcts)) : null;
-  const missing = g.students.filter(s => !t.blanks.some(b => b.sid === s.id)), keyN = t.key.mc.filter(k => k >= 0).length;
+  const C = msCohort(t), mine = msSort(C.rows.filter(e => e.t === t)), k = msKpis(mine), multi = C.ts.length > 1;
+  const missing = g.students.filter(s => !t.blanks.some(b => b.sid === s.id)), keyN = t.key.mc.filter(x => x >= 0).length;
   let h = keyN < MS.mc.length ? `<div class="warnbox" style="margin-bottom:12px">Kalit to‘liq emas: ${keyN}/${MS.mc.length}. Belgilanmagan savollar hisobga olinmaydi.</div>` : "";
-  h += `<div class="kpis"><div class="kpi"><span>Topshirdi</span><b>${t.blanks.length}${g.students.length ? `<span style="font-size:14px;color:var(--mut)"> / ${g.students.length}</span>` : ""}</b></div>
-    <div class="kpi"><span>O‘rtacha</span><b>${a ?? "—"}%</b>${gbadge(a)}</div><div class="kpi"><span>📝 1–35 (o‘rtacha)</span><b>${r1(avg(rows.map(r => r.s.P1.ok)))}<span style="font-size:14px;color:var(--mut)"> / ${rows[0].s.P1.tot}</span></b></div><div class="kpi"><span>✍️ 36–45 (o‘rtacha)</span><b>${r1(avg(rows.map(r => r.s.P2.ok)))}<span style="font-size:14px;color:var(--mut)"> / ${rows[0].s.P2.tot}</span></b></div></div>`;
-  h += `<div class="card"><h2>Baholar taqsimoti</h2>${distHtml(pcts)}</div>`;
-  h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Natijalar</h2><span class="btns">${expBtns("rx")}<button class="btn s" id="rCsv">${IC.csv} CSV</button></span></div>
+  h += msRaschNote(C);
+  h += `<div class="kpis"><div class="kpi"><span>Topshirdi</span><b>${mine.length}${g.students.length ? `<span style="font-size:14px;color:var(--mut)"> / ${g.students.length}</span>` : ""}</b></div>
+    <div class="kpi"><span>O‘rtacha ball</span><b>${f2(k.avg)}</b><span>eng yuqori: ${f2(k.best)}</span></div>
+    <div class="kpi"><span>Sertifikat (46+)</span><b>${k.cert}<span style="font-size:14px;color:var(--mut)"> / ${k.n}</span></b></div>
+    <div class="kpi"><span>A va A+</span><b>${k.top}</b></div></div>`;
+  h += `<div class="card"><h2>Baholar taqsimoti</h2>${msDistHtml(mine.map(e => e.r))}</div>`;
+  h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Natijalar <small>(Rasch)</small></h2><span class="btns">${expBtns("rx")}<button class="btn s" id="rCsv">${IC.csv} CSV</button></span></div>
     <div class="search" style="margin:4px 0 8px">${IC.search}<input type="search" class="fq" data-k="rq" placeholder="ID yoki ism-familiya bo‘yicha qidirish" value="${esc(ui.rq || "")}" autocomplete="off"></div><div class="small mut fqn" style="margin:0 2px 6px"></div>
-    <div class="tscroll"><table><tr><th>#</th><th>ID</th><th>O‘quvchi</th><th class="num">1–35</th><th class="num">36–45</th><th class="num">Jami</th><th class="num">%</th><th>Baho</th></tr>
-    ${rows.map((r, i) => `<tr data-fid="${r.b.sid || ""}" data-fnm="${esc(r.name || "aniqlanmagan")}" ${r.b.sid ? `class="cl" data-s="${r.b.sid}"` : ""}><td>${i + 1}</td><td>${r.b.sid ? `<span class="idb">${r.b.sid}</span>` : ""}</td><td>${r.name ? esc(r.name) : `<span style="color:var(--warn)">aniqlanmagan</span>`}</td><td class="num">${r.s.P1.ok}/${r.s.P1.tot}</td><td class="num">${r.s.P2.ok}/${r.s.P2.tot}</td><td class="num"><b>${r.s.ok}</b>/${r.s.tot}</td><td class="num"><b>${r.s.pct ?? "—"}</b></td><td>${gbadge(r.s.pct)}</td></tr>`).join("")}</table></div>
-    ${missing.length ? `<div class="small mut" style="margin-top:10px"><b>Topshirmagan (${missing.length}):</b> ${missing.map(s => `${s.id} ${esc(s.name)}`).join(", ")}</div>` : ""}</div>`;
-  const q1 = MS.mc.map((m, i) => { const k = t.key.mc[i]; if (k < 0) return `<div class="qs" style="background:var(--line2)"><b>${m.q}</b>—</div>`; const p = Math.round(rows.filter(r => r.s.a[i] === k).length / rows.length * 100); return `<div class="qs ${p >= 70 ? "g5" : p >= 40 ? "g3" : "g2"}"><b>${m.q}·${MS_L[k]}</b>${p}%</div>`; }).join("");
+    <div class="tscroll"><table>${msHead(false)}${mine.map(e => msRowHtml(e, false)).join("")}</table></div>
+    ${multi ? `<div class="small mut" style="margin-top:8px">“O‘rin” — ${C.R.N} ta o‘quvchi ichidagi umumiy o‘rin.</div>` : ""}
+    ${missing.length ? `<div class="small mut" style="margin-top:10px"><b>Topshirmagan (${missing.length}):</b> ${missing.map(s => `${s.id} ${esc(s.name)}`).join(", ")}</div>` : ""}
+    <button class="btn" id="goMS" style="margin-top:12px;width:100%">🎓 Barcha Milliy sertifikat natijalari</button></div>`;
+  const rows = t.blanks.map(b => ({ b, s: msScore(t, b) }));
+  const q1 = MS.mc.map((m, i) => { const kk = t.key.mc[i]; if (kk < 0) return `<div class="qs" style="background:var(--line2)"><b>${m.q}</b>—</div>`; const p = Math.round(rows.filter(r => r.s.a[i] === kk).length / rows.length * 100); return `<div class="qs ${p >= 70 ? "g5" : p >= 40 ? "g3" : "g2"}"><b>${m.q}·${MS_L[kk]}</b>${p}%</div>`; }).join("");
   const q2 = MS.wr.map((m, i) => { const p = Math.round(rows.filter(r => r.s.wv[i]).length / rows.length * 100); return `<div class="qs ${p >= 70 ? "g5" : p >= 40 ? "g3" : "g2"}"><b>${m.q}${m.p}</b>${p}%</div>`; }).join("");
   h += `<div class="card"><h2>Savollar tahlili <small>(necha foiz to‘g‘ri)</small></h2><div class="small mut" style="margin:4px 0 6px">📝 1–35</div><div class="qstat">${q1}</div><div class="small mut" style="margin:12px 0 6px">✍️ 36–45</div><div class="qstat">${q2}</div></div>`;
   $("view").innerHTML = h;
-  $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${g.id}/${el.dataset.s}`));
+  $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${el.dataset.s}`));
   bindFilter(t, "rq", "tr[data-fid]");
-  bindExp("rx", () => testReportSpec(t, g), `${safeName(t.cfg.title)}-natijalar`);
-  $("rCsv").onclick = () => {
-    const head = ["#", "ID", "Ism familiya", "1-35", "36-45", "Jami", "Maks", "Foiz", "Baho", ...MS.mc.map(m => String(m.q)), ...MS.wr.map(m => m.q + m.p)];
-    const keyRow = ["", "", "KALIT", "", "", "", "", "", "", ...t.key.mc.map(k => k >= 0 ? MS_L[k] : ""), ...MS.wr.map(() => "")];
-    const body = rows.map((r, i) => [i + 1, r.b.sid || "", r.name || "aniqlanmagan", r.s.P1.ok, r.s.P2.ok, r.s.ok, r.s.tot, r.s.pct ?? "", grade(r.s.pct).g || "", ...r.s.a.map(v => v >= 0 ? MS_L[v] : v === -2 ? "?" : "-"), ...r.s.wv.map(v => v ? "+" : "")]);
-    const csv = [head, keyRow, ...body].map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(";")).join("\r\n");
-    download(`${safeName(t.cfg.title)}-natijalar.csv`, new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  bindExp("rx", () => testReportSpecMS(t, g), `${safeName(t.cfg.title)}-natijalar`);
+  $("rCsv").onclick = () => msCsv(mine, `${safeName(t.cfg.title)}-${safeName(g.name)}-rasch.csv`);
+  $("goMS").onclick = () => { ui.msc = C.key; ui.msg = ""; go("#ms"); };
+}
+function msReportSpec(title, sub, list, C, grp) {
+  const k = msKpis(list), c = {}; MS_GR.forEach(x => c[x] = 0); list.forEach(e => { if (e.r.baho) c[e.r.baho]++; });
+  const cols = [{ h: "O‘rin", w: 6, al: "r" }, { h: "ID", w: 6 }, { h: "O‘quvchi", w: grp ? 22 : 28 }, ...(grp ? [{ h: "Guruh", w: 11 }] : []), { h: "Algebra", w: 9, al: "r" }, { h: "Geometr.", w: 9, al: "r" }, { h: "Ball", w: 8, al: "r" }, { h: "Baho", w: 6 }, { h: "Foiz", w: 8, al: "r" }, { h: "BMBA", w: 7, al: "r" }];
+  return {
+    title, sub,
+    kpis: [["Topshirdi", String(k.n)], ["O‘rtacha ball", f2(k.avg)], ["Sertifikat (46+)", `${k.cert} / ${k.n}`], ["A va A+", String(k.top)]],
+    table: { title: "Natijalar (Rasch modeli)", cols, rows: list.map(e => { const r = e.r; return [r.rank ?? "", e.b.sid || "", e.name ? { t: e.name } : { t: "aniqlanmagan", c: "#b45309" }, ...(grp ? [e.g ? e.g.name : ""] : []), f2(r.alg), f2(r.geo), { t: f2(r.ball), b: 1 }, r.baho ? { t: r.baho, b: 1, c: MS_GC[r.baho] } : "—", r.pct != null ? f1(r.pct) + "%" : "—", r.bmba != null ? f1(r.bmba) : "—"]; }) },
+    notes: [`Baholar: ${MS_GR.map(x => `${x} — ${c[x]}`).join(", ")}`, `Rasch modeli: ${C.R.N} ta o‘quvchi asosida hisoblandi. Algebra 2/3, geometriya 1/3 ulush bilan.`]
   };
 }
 function testReportSpecMS(t, g) {
-  const rows = t.blanks.map(b => ({ b, s: msScore(t, b), name: b.sid ? stName(g, b.sid) : null })).sort((a, b) => (b.s.pct ?? -1) - (a.s.pct ?? -1));
-  const pcts = rows.map(r => r.s.pct).filter(x => x != null), a = pcts.length ? r1(avg(pcts)) : null;
-  const missing = g.students.filter(s => !t.blanks.some(b => b.sid === s.id));
-  return {
-    title: t.cfg.title || "Milliy sertifikat", sub: `${g.name} · ${fmtDate(t.date)} · Milliy sertifikat (1–35 + 36–45)`,
-    kpis: [["Topshirdi", `${t.blanks.length}${g.students.length ? " / " + g.students.length : ""}`], ["O‘rtacha", a != null ? a + "%" : "—", a], ["1–35 o‘rt.", rows.length ? `${r1(avg(rows.map(r => r.s.P1.ok)))} / ${rows[0].s.P1.tot}` : "—"], ["36–45 o‘rt.", rows.length ? `${r1(avg(rows.map(r => r.s.P2.ok)))} / ${rows[0].s.P2.tot}` : "—"]],
-    dist: distCounts(pcts),
-    table: { title: "Natijalar", cols: [{ h: "#", w: 5 }, { h: "ID", w: 7 }, { h: "O‘quvchi", w: 30 }, { h: "1–35", w: 10, al: "r" }, { h: "36–45", w: 10, al: "r" }, { h: "Jami", w: 9, al: "r" }, { h: "%", w: 8, al: "r" }, { h: "Baho", w: 20 }],
-      rows: rows.map((r, i) => [i + 1, r.b.sid || "", r.name ? { t: r.name } : { t: "aniqlanmagan", c: "#b45309" }, `${r.s.P1.ok}/${r.s.P1.tot}`, `${r.s.P2.ok}/${r.s.P2.tot}`, { t: r.s.ok, b: 1 }, { t: r.s.pct ?? "—", b: 1 }, { g: r.s.pct }]) },
-    note: missing.length ? `Topshirmagan (${missing.length}): ${missing.map(s => s.name).join(", ")}` : "",
-    qgrid: MS.mc.map((m, i) => { const k = t.key.mc[i]; return { t: `${m.q}`, p: k >= 0 && rows.length ? Math.round(rows.filter(r => r.s.a[i] === k).length / rows.length * 100) : null }; }).concat(MS.wr.map((m, i) => ({ t: m.q + m.p, p: rows.length ? Math.round(rows.filter(r => r.s.wv[i]).length / rows.length * 100) : null })))
+  const C = msCohort(t), mine = msSort(C.rows.filter(e => e.t === t)), missing = g.students.filter(s => !t.blanks.some(b => b.sid === s.id));
+  const sp = msReportSpec(t.cfg.title || "Milliy sertifikat", `${g.name} · ${fmtDate(t.date)} · Milliy sertifikat`, mine, C, false);
+  if (missing.length) sp.note = `Topshirmagan (${missing.length}): ${missing.map(s => s.name).join(", ")}`;
+  return sp;
+}
+
+/* ---- Alohida bo‘lim: barcha Milliy sertifikat natijalari ---- */
+function viewMS() {
+  const cs = msCohorts();
+  setBar({ title: "Milliy sertifikat", sub: "Rasch modeli bo‘yicha natijalar", back: "#", tabs: [["res", "Natijalar"], ["sum", "Jamlanma"]], active: ui.mstab || "res", onTab: k => { ui.mstab = k; viewMS(); } });
+  if (!cs.length) { $("view").innerHTML = `<div class="card empty"><div class="big">🎓</div><b>Hali Milliy sertifikat natijasi yo‘q</b>Guruh ichida “＋ Milliy sertifikat” testini yarating va blankalarni skanerlang — natijalar Rasch modeli bo‘yicha shu yerda jamlanadi.</div>`; return; }
+  if (ui.mstab === "sum") return viewMSSum(cs);
+  let C = cs.find(c => c.key === ui.msc) || cs[cs.length - 1]; ui.msc = C.key;
+  const gsel = C.groups.find(g => g.id === ui.msg) ? ui.msg : "";
+  const list = msSort(C.rows.filter(e => !gsel || (e.g && e.g.id === gsel))), k = msKpis(list), grp = C.groups.length > 1;
+  let h = `<div class="card"><div class="row"><label class="f grow">Test (mock)<select id="msC">${cs.slice().reverse().map(c => `<option value="${esc(c.key)}" ${c === C ? "selected" : ""}>${esc(c.title || "Nomsiz")} · ${fmtDate(c.date)} · ${c.R.N} o‘quvchi</option>`).join("")}</select></label>
+    ${grp ? `<label class="f">Guruh<select id="msG"><option value="">Barcha guruhlar</option>${C.groups.map(g => `<option value="${g.id}" ${g.id === gsel ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></label>` : ""}</div></div>`;
+  h += msRaschNote(C);
+  h += `<div class="kpis"><div class="kpi"><span>Topshirdi</span><b>${k.n}</b><span>${C.groups.map(g => esc(g.name)).join(", ")}</span></div>
+    <div class="kpi"><span>O‘rtacha ball</span><b>${f2(k.avg)}</b><span>eng yuqori: ${f2(k.best)}</span></div>
+    <div class="kpi"><span>Sertifikat (46+)</span><b>${k.cert}<span style="font-size:14px;color:var(--mut)"> / ${k.n}</span></b></div>
+    <div class="kpi"><span>A va A+</span><b>${k.top}</b></div></div>`;
+  h += `<div class="card"><h2>Baholar taqsimoti</h2>${msDistHtml(list.map(e => e.r))}</div>`;
+  h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Hisobot <small>(umumiy ball bo‘yicha)</small></h2><span class="btns">${expBtns("mz")}<button class="btn s" id="mzCsv">${IC.csv} CSV</button></span></div>
+    <div class="search" style="margin:4px 0 8px">${IC.search}<input type="search" class="fq" data-k="mq" placeholder="ID yoki ism-familiya bo‘yicha qidirish" value="${esc(ui.mq || "")}" autocomplete="off"></div><div class="small mut fqn" style="margin:0 2px 6px"></div>
+    <div class="tscroll"><table>${msHead(grp)}${list.map(e => msRowHtml(e, grp)).join("")}</table></div></div>`;
+  const R = C.R, items = [...MS.mc.map(m => String(m.q)), ...MS.wr.map(m => m.q + m.p)];
+  h += `<div class="card"><h2>Savollar qiyinligi <small>(to‘g‘ri topganlar % · Rasch og‘irligi)</small></h2><div class="small mut" style="margin:4px 0 8px">Og‘irlik qancha katta bo‘lsa, savol shuncha qiyin va shuncha ko‘p ball beradi. Hamma topgan yoki hech kim topmagan savol hisobga olinmaydi.</div>
+    <div class="qstat">${items.map((q, i) => { const p = R.P[i] == null ? null : Math.round(R.P[i] * 100); const all = R.P[i] == null ? (C.rows.length && C.rows.every(e => msVec(e.t, e.b)[i]) ? 100 : 0) : p; return `<div class="qs ${R.W[i] == null ? "" : all >= 70 ? "g5" : all >= 40 ? "g3" : "g2"}" ${R.W[i] == null ? `style="background:var(--line2)"` : ""}><b>${q}</b>${all}%<br><small>${R.W[i] == null ? "—" : "×" + R.W[i].toFixed(2)}</small></div>`; }).join("")}</div></div>`;
+  $("view").innerHTML = h;
+  $("msC").onchange = () => { ui.msc = $("msC").value; ui.msg = ""; viewMS(); };
+  if ($("msG")) $("msG").onchange = () => { ui.msg = $("msG").value; viewMS(); };
+  $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${el.dataset.s}`));
+  bindFilter({ id: "__ms" }, "mq", "tr[data-fid]");
+  const gname = gsel ? G(gsel).name : "";
+  bindExp("mz", () => msReportSpec(C.title || "Milliy sertifikat", `${gname || C.groups.map(g => g.name).join(", ")} · ${fmtDate(C.date)} · Milliy sertifikat natijalari`, list, C, grp && !gsel), `${safeName(C.title)}${gname ? "-" + safeName(gname) : ""}-milliy-sertifikat`);
+  $("mzCsv").onclick = () => msCsv(list, `${safeName(C.title)}${gname ? "-" + safeName(gname) : ""}-milliy-sertifikat.csv`);
+}
+function msSumData(cs) {
+  const map = new Map();
+  cs.forEach((c, ci) => c.rows.forEach(e => { if (!e.b.sid) return; let o = map.get(e.b.sid); if (!o) { const f = stAny(e.b.sid, e.g); o = { sid: e.b.sid, name: f ? f.s.name : e.b.sid, g: f ? f.g : e.g, cells: Array(cs.length).fill(null) }; map.set(e.b.sid, o); } o.cells[ci] = e.r; }));
+  const rows = [...map.values()].map(o => { const v = o.cells.filter(r => r && r.ball != null).map(r => r.ball); return Object.assign(o, { n: v.length, avg: v.length ? avg(v) : null, last: v.length ? v[v.length - 1] : null }); });
+  return rows.sort((a, b) => (b.avg ?? -1e9) - (a.avg ?? -1e9));
+}
+function viewMSSum(cs) {
+  const rows = msSumData(cs);
+  const cell = r => r && r.ball != null ? `<td><div class="mc" style="background:${MS_GC[r.baho]}17;color:${MS_GC[r.baho]}"><b>${f2(r.ball)}</b><span>${r.baho}</span></div></td>` : `<td><div class="mc g0"><b>—</b></div></td>`;
+  let h = `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">📋 Barcha mocklar bo‘yicha jamlanma <small>(umumiy ball va baho)</small></h2><span class="btns">${expBtns("ms")}<button class="btn s" id="msCsv">${IC.csv} CSV</button></span></div>
+    <div class="search" style="margin:4px 0 8px">${IC.search}<input type="search" class="fq" data-k="mq" placeholder="ID yoki ism-familiya bo‘yicha qidirish" value="${esc(ui.mq || "")}" autocomplete="off"></div><div class="small mut fqn" style="margin:0 2px 6px"></div>
+    <div class="tscroll"><table class="mtx"><tr><th class="st">O‘quvchi</th>${cs.map((c, i) => `<th class="mh" data-c="${esc(c.key)}"><div>${esc(c.title || i + 1 + "-mock")}</div><small>${esc(shortDate(c.date))} · ${c.R.N} ta</small></th>`).join("")}<th class="mh">O‘rtacha ball</th><th class="mh">Oxirgi</th></tr>
+    ${rows.map(r => `<tr data-fid="${r.sid}" data-fnm="${esc(r.name)}"><td class="st cl" data-s="${r.g ? r.g.id : ""}/${r.sid}"><span class="idb">${r.sid}</span> ${esc(r.name)}<div class="small mut">${esc(r.g ? r.g.name : "")}</div></td>${r.cells.map(cell).join("")}<td><b>${f2(r.avg)}</b><div class="small mut">${r.n}/${cs.length} mock</div></td><td>${r.last != null ? `<b>${f2(r.last)}</b><div>${msBadge({ ball: r.last, baho: raschGrade(r.last) })}</div>` : "—"}</td></tr>`).join("")}
+    </table></div><div class="small mut" style="margin-top:8px">Mock nomini bossangiz — o‘sha mock hisoboti, ismni bossangiz — o‘quvchi sahifasi ochiladi.</div></div>`;
+  $("view").innerHTML = h;
+  $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${el.dataset.s}`));
+  $("view").querySelectorAll("[data-c]").forEach(el => el.onclick = () => { ui.msc = el.dataset.c; ui.msg = ""; ui.mstab = "res"; viewMS(); });
+  bindFilter({ id: "__ms" }, "mq", "tr[data-fid]");
+  bindExp("ms", () => {
+    let c2 = cs, rr = rows; const MAXC = 12; if (cs.length > MAXC) { const k = cs.length - MAXC; c2 = cs.slice(k); rr = rows.map(r => Object.assign({}, r, { cells: r.cells.slice(k) })); }
+    return { landscape: true, title: "Milliy sertifikat — jamlanma", sub: `${rows.length} o‘quvchi · ${c2.length} mock (Rasch modeli)`,
+      table: { title: "", cols: [{ h: "ID", w: 6 }, { h: "O‘quvchi", w: 22 }, ...c2.map((c, i) => ({ h: `${i + 1}-mock`, w: 8, al: "r" })), { h: "O‘rtacha", w: 9, al: "r" }],
+        rows: rr.map(r => [r.sid, r.name, ...r.cells.map(c => c && c.ball != null ? { t: `${f1(c.ball)} ${c.baho}`, c: MS_GC[c.baho], b: 1 } : { t: "—", c: "#a5adbd" }), { t: f2(r.avg), b: 1 }]) },
+      notes: c2.map((c, i) => `${i + 1}-mock: ${c.title} (${fmtDate(c.date)}) — ${c.R.N} o‘quvchi`) };
+  }, "milliy-sertifikat-jamlanma");
+  $("msCsv").onclick = () => {
+    const head = ["ID", "F.I.Sh", "Guruh", ...cs.flatMap(c => [`${c.title} (${fmtDate(c.date)}) - ball`, `${c.title} - baho`]), "O'rtacha ball", "Mocklar soni"];
+    const body = rows.map(r => [r.sid, r.name, r.g ? r.g.name : "", ...r.cells.flatMap(c => c && c.ball != null ? [f2(c.ball), c.baho] : ["", ""]), r.avg != null ? f2(r.avg) : "", r.n]);
+    const csv = [head, ...body].map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(";")).join("\r\n");
+    download("milliy-sertifikat-jamlanma.csv", new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
   };
+}
+function msStudentCard(sid) {
+  const cs = msCohorts(), list = cs.map(c => ({ c, e: c.rows.find(e => e.b.sid === sid) })).filter(x => x.e);
+  if (!list.length) return "";
+  return `<div class="card"><h2>🎓 Milliy sertifikat <small>(Rasch)</small></h2><div class="tscroll"><table><tr><th>Sana</th><th>Mock</th><th class="num">Algebra</th><th class="num">Geometriya</th><th class="num">Ball</th><th>Baho</th><th class="num">Foiz</th><th class="num">BMBA</th><th class="num">O‘rin</th></tr>
+    ${list.slice().reverse().map(({ c, e }) => `<tr class="cl" data-t="${e.t.id}"><td>${fmtDate(e.t.date)}</td><td>${esc(c.title)}</td><td class="num">${f2(e.r.alg)}</td><td class="num">${f2(e.r.geo)}</td><td class="num"><b>${f2(e.r.ball)}</b></td><td>${msBadge(e.r)}</td><td class="num">${e.r.pct != null ? f1(e.r.pct) + "%" : "—"}</td><td class="num">${e.r.bmba != null ? f1(e.r.bmba) : "—"}</td><td class="num">${e.r.rank ?? "—"}/${c.R.N}</td></tr>`).join("")}</table></div></div>`;
 }
 
 /* ============================ LIVE CAMERA SCANNER ============================ */
@@ -2311,7 +2478,7 @@ function testReportSpec(t, g) {
   };
 }
 function groupReportSpec(g) {
-  const ts = groupTests(g).filter(t => t.blanks.length), avgs = ts.map(testAvg), gAvg = avgs.filter(x => x != null).length ? r1(avg(avgs.filter(x => x != null))) : null;
+  const ts = regTests(g).filter(t => t.blanks.length), avgs = ts.map(testAvg), gAvg = avgs.filter(x => x != null).length ? r1(avg(avgs.filter(x => x != null))) : null;
   const rows = g.students.map(s => ({ s, sm: studentSummary(g, s.id) })), ranked = rows.filter(r => r.sm.n).sort((a, b) => b.sm.avg - a.sm.avg);
   const tr = sm => sm.n < 2 ? "—" : (sm.delta > 0 ? "▲ +" : sm.delta < 0 ? "▼ " : "") + sm.delta + "%";
   return {
@@ -2326,7 +2493,7 @@ function groupReportSpec(g) {
   };
 }
 function studentReportSpec(g, sid) {
-  const st = g.students.find(s => s.id === sid), sm = studentSummary(g, sid), ts = groupTests(g).filter(t => t.blanks.length);
+  const st = g.students.find(s => s.id === sid), sm = studentSummary(g, sid), ts = regTests(g).filter(t => t.blanks.length);
   const rank = g.students.map(s => ({ id: s.id, a: studentSummary(g, s.id).avg })).filter(x => x.a != null).sort((a, b) => b.a - a.a).findIndex(x => x.id === sid) + 1;
   const nR = g.students.filter(s => studentSummary(g, s.id).n).length;
   const trend = sm.n < 2 ? "" : sm.sl > 2 ? "Umumiy tendensiya: o‘sish" : sm.sl < -2 ? "Umumiy tendensiya: pasayish" : "Umumiy tendensiya: barqaror";
