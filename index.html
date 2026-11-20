@@ -889,9 +889,14 @@ function checkId(raw, g, own) {
   const v = String(raw || "").trim(); if (!v) return [null, null];
   if (!/^\d{1,4}$/.test(v)) return [null, "ID faqat raqamlardan iborat bo‘lsin (1–4 xona)"];
   const id = v.padStart(4, "0"); if (id === "0000") return [null, "ID 0001 dan 9999 gacha bo‘lishi kerak"];
-  if (id !== own && allIds().has(id)) { const og = groups.find(x => x.students.some(y => y.id === id)); return [null, `ID ${id} band${og ? " (" + og.name + ")" : ""}`]; }
+  // bitta guruh ichida takrorlanmaydi; boshqa guruhlarda bir xil ID bo‘lishi mumkin (o‘sha o‘quvchi)
+  if (id !== own) { const same = g.students.find(y => y.id === id); if (same) return [null, `ID ${id} bu guruhda band: ${same.name}`]; }
   return [id, null];
 }
+// boshqa guruhlarda shu ID kimda bor (ogohlantirish uchun)
+function idElsewhere(id, g) { for (const x of groups) { if (x === g) continue; const s = x.students.find(y => y.id === id); if (s) return { g: x, s }; } return null; }
+// boshqa guruhdagi xuddi shu ism-familiyali o‘quvchining ID si (shu guruhda bo‘sh bo‘lsa)
+function idByName(name, g) { const n = norm(name); for (const x of groups) { if (x === g) continue; const s = x.students.find(y => norm(y.name) === n); if (s && !g.students.some(y => y.id === s.id)) return s.id; } return null; }
 // test ichida qidiruv (natijalar va skaner)
 function applyFilter(k, sel) {
   const q = ui[k] || "", els = [...document.querySelectorAll(sel)]; let n = 0;
@@ -1127,20 +1132,22 @@ function newGroupDlg() {
     $("ngOk").onclick = async () => {
       const name = $("ngName").value.trim(); if (!name) { $("ngName").focus(); return; }
       const g = { id: uid("g"), name, created: Date.now(), students: [] };
-      addStudentsFromText(g, $("ngList").value); const ch = addStudentsFromText.changed;
-      groups.push(g); await saveGroup(g); closeModal(); if (ch.length) setTimeout(() => toast(`Band ID lar o‘rniga yangisi berildi: ${ch.join(", ")}`), 400); ui.gtab = g.students.length ? "students" : "students"; go("#g/" + g.id);
+      addStudentsFromText(g, $("ngList").value); const chg = addStudentsFromText.changed, lnk = addStudentsFromText.linked;
+      const ch = []; if (lnk.length) ch.push("Boshqa guruhdagi ID si berildi: " + lnk.join(", ")); if (chg.length) ch.push("Band ID o‘rniga yangisi berildi: " + chg.join(", "));
+      groups.push(g); await saveGroup(g); closeModal(); if (ch.length) setTimeout(() => toast(ch.join(". ")), 400); ui.gtab = g.students.length ? "students" : "students"; go("#g/" + g.id);
     };
   });
 }
 // lines: "Familiya Ism", "1234 Familiya Ism" or "Familiya Ism;1234" (4-digit ID optional)
 function addStudentsFromText(g, text) {
-  let n = 0; const taken = allIds(); addStudentsFromText.changed = [];
+  let n = 0; const taken = allIds(); addStudentsFromText.changed = []; addStudentsFromText.linked = [];
   text.split(/\r?\n/).forEach(line => {
     line = line.trim(); if (!line) return; let id = null, m;
     if ((m = line.match(/^(\d{4})[\s;,\t]+(.+)$/))) { id = m[1]; line = m[2]; }
     else if ((m = line.match(/^(.+?)[\s;,\t]+(\d{4})$/))) { id = m[2]; line = m[1]; }
     const name = line.replace(/^\s*\d{1,3}[.)\s-]+/, "").replace(/[;,\t]+$/, "").trim(); if (!name) return;
-    if (id && (id === "0000" || taken.has(id) || g.students.some(s => s.id === id))) { addStudentsFromText.changed.push(`${name}: ${id} band`); id = null; }
+    if (id && (id === "0000" || g.students.some(s => s.id === id))) { addStudentsFromText.changed.push(`${name}: ${id} band`); id = null; }
+    if (!id) { id = idByName(name, g); if (id) addStudentsFromText.linked.push(`${name} → ${id}`); }
     if (!id) id = nextId(g, taken);
     if (id) { g.students.push({ id, name }); taken.add(id); n++; }
   });
@@ -1207,13 +1214,16 @@ function groupStudents(g) {
   const add = async () => {
     const n = $("sName").value.trim(); if (!n) { $("sName").focus(); return; }
     let [id, err] = checkId($("sId").value, g); if (err) { toast(err); $("sId").focus(); return; }
+    let msg = "";
+    if (id) { const o = idElsewhere(id, g); if (o && norm(o.s.name) !== norm(n)) msg = ` · diqqat: bu ID “${o.g.name}” guruhida ${o.s.name}ga berilgan`; else if (o) msg = ` · “${o.g.name}” guruhidagi bilan bir xil`; }
+    else { id = idByName(n, g); if (id) { const o = idElsewhere(id, g); msg = ` · “${o.g.name}” guruhidagi ID si berildi`; } }
     id = id || nextId(g); if (!id) { toast("Bo‘sh ID qolmadi"); return; }
-    g.students.push({ id, name: n }); sortStudents(g); await saveGroup(g); ui.sq = ""; viewGroup(g); toast(`${n} — ID ${id}`); setTimeout(() => $("sName") && $("sName").focus(), 30);
+    g.students.push({ id, name: n }); sortStudents(g); await saveGroup(g); ui.sq = ""; viewGroup(g); toast(`${n} — ID ${id}${msg}`); setTimeout(() => $("sName") && $("sName").focus(), 30);
   };
   $("sAdd").onclick = add; $("sName").onkeydown = e => { if (e.key === "Enter") add(); }; $("sId").onkeydown = e => { if (e.key === "Enter") add(); };
   $("sBulk").onclick = () => modal(`<h3>Ro‘yxatdan qo‘shish</h3><label class="f">Har qatorda bitta o‘quvchi (Excel yoki Word’dan nusxalab qo‘yish mumkin). ID bilan: “1234 Familiya Ism”<textarea id="bList"></textarea></label><div class="acts"><button class="btn" data-x>Bekor qilish</button><button class="btn p" id="bOk">Qo‘shish</button></div>`, el => {
     el.querySelector("[data-x]").onclick = closeModal;
-    $("bOk").onclick = async () => { const n = addStudentsFromText(g, $("bList").value); await saveGroup(g); closeModal(); viewGroup(g); const ch = addStudentsFromText.changed; toast(`${n} ta o‘quvchi qo‘shildi${ch.length ? ". Band ID lar o‘rniga yangisi berildi: " + ch.join(", ") : ""}`); };
+    $("bOk").onclick = async () => { const n = addStudentsFromText(g, $("bList").value); await saveGroup(g); closeModal(); viewGroup(g); const ch = addStudentsFromText.changed, lk = addStudentsFromText.linked; toast(`${n} ta o‘quvchi qo‘shildi${lk.length ? ". Boshqa guruhdagi ID si berildi: " + lk.join(", ") : ""}${ch.length ? ". Band ID lar o‘rniga yangisi berildi: " + ch.join(", ") : ""}`); };
   });
   $("sCards").onclick = () => { if (!g.students.length) return; const csv = ["ID;Ism familiya", ...g.students.map(s => `${s.id};${s.name}`)].join("\r\n"); download(`${safeName(g.name)}-ID-royxati.csv`, new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" })); };
 
