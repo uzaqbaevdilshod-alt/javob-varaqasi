@@ -182,6 +182,12 @@ tr.cl{cursor:pointer}tr.cl:hover td{background:#fafbfe}
 .sheet label.f{margin-bottom:12px}
 #zoom{position:fixed;inset:0;background:rgba(10,14,22,.9);display:none;align-items:center;justify-content:center;z-index:70;padding:16px;cursor:zoom-out}
 #zoom canvas{max-width:100%;max-height:100%;background:#fff;border-radius:6px}
+.mtx th,.mtx td{text-align:center;white-space:nowrap;padding:6px 5px}
+.mtx .st{position:sticky;left:0;background:#fff;z-index:1;text-align:left;max-width:180px;overflow:hidden;text-overflow:ellipsis;box-shadow:1px 0 0 var(--line2)}
+.mtx th.mh{cursor:pointer;text-transform:none;letter-spacing:0;font-size:12px;color:var(--ink2);min-width:64px;vertical-align:bottom}
+.mtx th.mh div{font-weight:800;color:var(--ink)}.mtx th small{display:block;font-weight:500;color:var(--mut)}.mtx th small.mt{max-width:90px;overflow:hidden;text-overflow:ellipsis;margin:0 auto}
+.mc{display:inline-flex;flex-direction:column;align-items:center;border-radius:9px;padding:4px 8px;min-width:54px}.mc b{font-size:14px}.mc span{font-size:11px;opacity:.85}
+.mtx tr.mavg td{background:#fafbfe;border-top:2px solid var(--line)}
 .mlPart{margin-top:12px}.mlPartHd{font-weight:700;font-size:13px;color:var(--acc-t);background:var(--acc-s);display:inline-block;padding:3px 10px;border-radius:8px}
 .mlSc{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:14px}
 .wrRow{border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:8px}.wrRow.done{border-color:#cfe9d8;background:#fbfefc}
@@ -1249,15 +1255,58 @@ function groupStats(g) {
     ${ranked.map((r, i) => `<tr class="cl" data-s="${r.s.id}"><td>${i + 1}</td><td><span class="idb">${r.s.id}</span></td><td>${esc(r.s.name)}</td><td class="num">${r.sm.n}/${ts.length}</td><td class="num"><b>${r.sm.avg}%</b></td><td class="num">${r.sm.last}%</td><td>${trendHtml(r.sm)}</td><td>${spark(r.sm.h.map(x => x.pct))}</td><td>${gbadge(r.sm.avg)}</td></tr>`).join("")}
     ${rows.filter(r => !r.sm.n).map(r => `<tr class="cl" data-s="${r.s.id}"><td></td><td><span class="idb">${r.s.id}</span></td><td>${esc(r.s.name)}</td><td class="num">0/${ts.length}</td><td class="num mut">—</td><td></td><td></td><td></td><td>${gbadge(null)}</td></tr>`).join("")}
     </table></div></div>`;
+  h += matrixHtml(g, ts);
   $("view").innerHTML = h;
   $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${g.id}/${el.dataset.s}`));
+  $("view").querySelectorAll(".mtx [data-t]").forEach(el => el.onclick = () => { ui.ttab = "results"; go("#t/" + el.dataset.t); });
   bindExp("gx", () => groupReportSpec(g), `${safeName(g.name)}-reyting`);
+  bindExp("mx", () => matrixSpec(g), `${safeName(g.name)}-ballar-jadvali`);
+  $("mCsv").onclick = () => matrixCsv(g);
   $("gCsv").onclick = () => {
     const head = ["O'rin", "ID", "Ism familiya", "Testlar", "O'rtacha %", "Oxirgi %", "Baho", ...ts.map(t => `${t.cfg.title} (${fmtDate(t.date)})`)];
     const body = [...ranked, ...rows.filter(r => !r.sm.n)].map((r, i) => [r.sm.n ? i + 1 : "", r.s.id, r.s.name, r.sm.n, r.sm.avg ?? "", r.sm.last ?? "", grade(r.sm.avg).g || "", ...ts.map(t => { const x = resultOf(t, r.s.id); return x ? x.pct : ""; })]);
     const csv = [head, ...body].map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(";")).join("\r\n");
     download(`${safeName(g.name)}-reyting.csv`, new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
   };
+}
+
+/* ---- Ballar jadvali: o‘quvchi × test ---- */
+function matrixData(g, ts) {
+  ts = ts || groupTests(g).filter(t => t.blanks.length);
+  const rows = g.students.map(s => {
+    const cells = ts.map(t => resultOf(t, s.id));
+    const got = cells.filter(c => c && c.pct != null), ok = got.reduce((a, c) => a + c.ok, 0), tot = got.reduce((a, c) => a + c.tot, 0);
+    return { s, cells, n: got.length, ok, tot, avg: got.length ? r1(avg(got.map(c => c.pct))) : null };
+  });
+  return { ts, rows };
+}
+function matrixHtml(g, ts) {
+  const { rows } = matrixData(g, ts);
+  const head = ts.map((t, i) => `<th class="mh" data-t="${t.id}" title="${esc(t.cfg.title)}"><div>${i + 1}-test</div><small>${esc(shortDate(t.date))}${isML(t) ? " · ML" : ""}</small><small class="mt">${esc(t.cfg.title)}</small></th>`).join("");
+  const cell = c => { if (!c || c.pct == null) return `<td><div class="mc g0"><b>—</b></div></td>`; const gr = grade(c.pct); return `<td><div class="mc ${gr.c}"><b>${c.ok}/${c.tot}</b><span>${c.pct}%</span></div></td>`; };
+  return `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">📋 Ballar jadvali <small>(har bir testdan to‘plagan ball)</small></h2><span class="btns">${expBtns("mx")}<button class="btn s" id="mCsv">${IC.csv} CSV</button></span></div>
+    <div class="tscroll"><table class="mtx"><tr><th class="st">O‘quvchi</th>${head}<th class="mh">Jami ball</th><th class="mh">O‘rtacha</th></tr>
+    ${rows.map(r => `<tr><td class="st cl" data-s="${r.s.id}"><span class="idb">${r.s.id}</span> ${esc(r.s.name)}</td>${r.cells.map(cell).join("")}<td><b>${r.n ? r.ok + "/" + r.tot : "—"}</b><div class="small mut">${r.n}/${ts.length} test</div></td><td>${r.avg != null ? `<b>${r.avg}%</b><div>${gbadge(r.avg)}</div>` : "—"}</td></tr>`).join("")}
+    <tr class="mavg"><td class="st"><b>Guruh o‘rtachasi</b></td>${ts.map(t => { const a = testAvg(t); return `<td><b>${a ?? "—"}${a != null ? "%" : ""}</b></td>`; }).join("")}<td></td><td></td></tr>
+    </table></div><div class="small mut" style="margin-top:8px">Katak: to‘g‘ri javoblar soni / jami savol va foiz. Test nomini bossangiz — o‘sha test natijalari, ismni bossangiz — o‘quvchi sahifasi ochiladi.</div></div>`;
+}
+function matrixSpec(g) {
+  let { ts, rows } = matrixData(g);
+  const MAXC = 14, cut = ts.length > MAXC; if (cut) { const k = ts.length - MAXC; ts = ts.slice(k); rows = rows.map(r => Object.assign({}, r, { cells: r.cells.slice(k) })); }
+  const cols = [{ h: "ID", w: 6 }, { h: "O‘quvchi", w: 24 }, ...ts.map((t, i) => ({ h: `${i + 1}-test`, w: 8, al: "r" })), { h: "Jami", w: 9, al: "r" }, { h: "O‘rt. %", w: 8, al: "r" }];
+  return {
+    landscape: true, title: `${g.name} — ballar jadvali`, sub: `${g.students.length} o‘quvchi · ${ts.length} test${cut ? " (oxirgi " + MAXC + " tasi)" : ""}`,
+    table: { title: "", cols, rows: rows.map(r => [r.s.id, r.s.name, ...r.cells.map(c => c && c.pct != null ? { t: `${c.ok}/${c.tot}`, c: GCOL[grade(c.pct).g], b: 1 } : { t: "—", c: "#a5adbd" }), { t: r.n ? `${r.ok}/${r.tot}` : "—", b: 1 }, { t: r.avg != null ? r.avg + "%" : "—", b: 1, c: r.avg != null ? GCOL[grade(r.avg).g] : "#a5adbd" }]) },
+    notes: ts.map((t, i) => `${i + 1}-test: ${t.cfg.title} (${fmtDate(t.date)})${isML(t) ? " — Multilevel" : ""}`),
+    note: "Rang: yashil — 5, ko‘k — 4, sariq — 3, qizil — 2 (86/71/56% chegaralari)."
+  };
+}
+function matrixCsv(g) {
+  const { ts, rows } = matrixData(g);
+  const head = ["ID", "Ism familiya", ...ts.flatMap((t, i) => [`${i + 1}. ${t.cfg.title} (${fmtDate(t.date)}) - ball`, `${i + 1}. maks`, `${i + 1}. %`]), "Jami ball", "Jami maks", "O'rtacha %", "Topshirgan testlar"];
+  const body = rows.map(r => [r.s.id, r.s.name, ...r.cells.flatMap(c => c && c.pct != null ? [c.ok, c.tot, c.pct] : ["", "", ""]), r.n ? r.ok : "", r.n ? r.tot : "", r.avg ?? "", r.n]);
+  const csv = [head, ...body].map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }).join(";")).join("\r\n");
+  download(`${safeName(g.name)}-ballar-jadvali.csv`, new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
 }
 
 /* ============================ STUDENT ============================ */
@@ -1935,6 +1984,7 @@ function reportItems(sp) {
       });
     } }));
   }
+  if (sp.notes && sp.notes.length) { it.push({ h: 20, gap: 10, draw() { } }); sp.notes.forEach(n => it.push({ h: 28, draw(x, y) { fnt(x, 17); x.fillStyle = "#475569"; x.fillText(fit(x, n, CW), M, y + 20); } })); }
   if (sp.note) it.push({ h: 40, gap: 10, draw(x, y) { fnt(x, 18); x.fillStyle = "#64748b"; x.fillText(fit(x, sp.note, CW), M, y + 26); } });
   if (sp.qgrid) {
     it.push({ h: 44, gap: 20, draw(x, y) { fnt(x, 24, 700); x.fillStyle = "#0f172a"; x.fillText("Savollar tahlili (necha foiz to‘g‘ri topgan)", M, y + 30); } });
@@ -1960,11 +2010,14 @@ function renderReport(sp, paged) {
 }
 async function exportReport(sp, kind, name) {
   try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) { }
-  if (kind === "png") { const c = renderReport(sp, false)[0]; c.toBlob(b => download(name + ".png", b), "image/png"); return; }
-  if (!window.jspdf) { toast("PDF kutubxonasi yuklanmadi, sahifani yangilang"); return; }
-  const pages = renderReport(sp, true), doc = new jspdf.jsPDF({ unit: "mm", format: "a4", compress: true });
-  pages.forEach((c, i) => { if (i) doc.addPage(); doc.addImage(c.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297, undefined, "FAST"); });
-  await download(name + ".pdf", doc.output("blob"));
+  const W0 = RP.W, PH0 = RP.PH; if (sp.landscape) { RP.W = 1754; RP.PH = 1240; }
+  try {
+    if (kind === "png") { const c = renderReport(sp, false)[0]; c.toBlob(b => download(name + ".png", b), "image/png"); return; }
+    if (!window.jspdf) { toast("PDF kutubxonasi yuklanmadi, sahifani yangilang"); return; }
+    const L = !!sp.landscape, pages = renderReport(sp, true), doc = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: L ? "landscape" : "portrait", compress: true });
+    pages.forEach((c, i) => { if (i) doc.addPage("a4", L ? "landscape" : "portrait"); doc.addImage(c.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, L ? 297 : 210, L ? 210 : 297, undefined, "FAST"); });
+    await download(name + ".pdf", doc.output("blob"));
+  } finally { RP.W = W0; RP.PH = PH0; }
 }
 const expBtns = id => `<button class="btn s" id="${id}Pdf">${IC.dl} PDF</button><button class="btn s" id="${id}Png">${IC.img} Rasm</button>`;
 function bindExp(id, specFn, name) { $(id + "Pdf").onclick = () => exportReport(specFn(), "pdf", name); $(id + "Png").onclick = () => exportReport(specFn(), "png", name); }
