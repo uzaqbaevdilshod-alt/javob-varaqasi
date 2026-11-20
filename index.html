@@ -884,6 +884,19 @@ function checkId(raw, g, own) {
   if (id !== own && allIds().has(id)) { const og = groups.find(x => x.students.some(y => y.id === id)); return [null, `ID ${id} band${og ? " (" + og.name + ")" : ""}`]; }
   return [id, null];
 }
+// test ichida qidiruv (natijalar va skaner)
+function applyFilter(k, sel) {
+  const q = ui[k] || "", els = [...document.querySelectorAll(sel)]; let n = 0;
+  els.forEach(el => { const ok = matchStudent({ id: el.dataset.fid || "", name: el.dataset.fnm || "" }, q); el.style.display = ok ? "" : "none"; if (ok) n++; });
+  const inp = document.querySelector(`.fq[data-k="${k}"]`), info = inp && inp.parentNode.nextElementSibling;
+  if (info && info.classList.contains("fqn")) info.textContent = norm(q) ? (n ? `${n} ta topildi` : `“${q}” bo‘yicha hech narsa topilmadi`) : "";
+}
+function bindFilter(t, k, sel) {
+  if (ui.fqT !== t.id) { ui.rq = ""; ui.bq = ""; ui.fqT = t.id; const i = document.querySelector(`.fq[data-k="${k}"]`); if (i) i.value = ""; }
+  const inp = document.querySelector(`.fq[data-k="${k}"]`); if (!inp) return;
+  inp.oninput = () => { ui[k] = inp.value; applyFilter(k, sel); };
+  applyFilter(k, sel);
+}
 const sortStudents = g => g.students.sort((a, b) => a.id.localeCompare(b.id));
 
 /* ============================ SCORING ============================ */
@@ -1451,6 +1464,7 @@ function tabScan(t, g) {
       ${isML(t) ? `<details style="margin-top:6px"><summary class="small mut" style="cursor:pointer">Maslahatlar</summary><ul class="small mut" style="padding-left:18px"><li>Yorug‘ joyda, varaqni tepadan, tekis qilib suratga oling.</li><li>Varaq to‘liq kadrda bo‘lsin — ayniqsa chap chetdagi chiziqchalar va tepadagi 2 ta qora belgi.</li><li>O‘quvchi “Maxsus kod”ga ID sini bo‘yaydi: 0077 → 00077.</li><li>Doirachali javobni tuzatish: kartadagi savol raqamini bosing.</li><li>Yozma javoblar: kartadagi “✍️ Yozma javoblar” tugmasi.</li></ul></details>` : `<details style="margin-top:6px"><summary class="small mut" style="cursor:pointer">Sozlash va maslahatlar</summary>
         <label class="f" style="margin-top:10px">Bo‘yalganlik chegarasi: <b id="thrV">${Math.round(thrOf(t) * 100)}%</b><input type="range" id="thr" min="0.2" max="0.8" step="0.05" value="${thrOf(t)}" style="width:240px"></label>
         <ul class="small mut" style="padding-left:18px"><li>Yorug‘ joyda, varaqni tepadan suratga oling; 4 burchak kvadrati kadrda bo‘lsin.</li><li>Yengil belgilar o‘qilmasa — chegarani pasaytiring.</li><li>Javobni tuzatish: kartadagi savol raqamini bosing.</li><li>ID aniqlanmasa — kartadagi ro‘yxatdan o‘quvchini tanlang.</li></ul></details>`}</div>
+    ${t.blanks.length ? `<div class="search" style="margin:0 0 6px">${IC.search}<input type="search" class="fq" data-k="bq" placeholder="ID yoki ism-familiya bo‘yicha qidirish" value="${esc(ui.bq || "")}" autocomplete="off"></div><div class="small mut fqn" style="margin:0 2px 10px"></div>` : ""}
     <div class="blanks" id="blanks"></div>`;
   $("fIn").onchange = e => { handleFiles(t, e.target.files); e.target.value = ""; };
   $("fCam").onchange = e => { handleFiles(t, e.target.files); e.target.value = ""; };
@@ -1461,6 +1475,7 @@ function tabScan(t, g) {
   if ($("thr")) $("thr").oninput = () => { t.thr = +$("thr").value; $("thrV").textContent = Math.round(t.thr * 100) + "%"; const LL = stripLayout(t.cfg.N, t.cfg.K, t.cfg.P, t.cfg.idGrid, t.cfg.lay); t.blanks.forEach(b => { if (!b.manualSid) { const id = decodeCode(b.codeFills) || decideId(b.idFills, t.thr, LL.idDigits); b.detId = id; if (id && g.students.some(s => s.id === id)) b.sid = id; } }); saveTest(t); renderBlanks(t, g); };
   $("bCam").onclick = () => openCamera(t, g);
   isML(t) ? renderBlanksML(t, g) : renderBlanks(t, g);
+  bindFilter(t, "bq", "#blanks .bk");
 }
 function drawOverlay(t, b) {
   if (isML(t)) return mlOverlay(t, b);
@@ -1479,10 +1494,10 @@ function drawOverlay(t, b) {
   return c;
 }
 function renderBlanks(t, g) {
-  const box = $("blanks"); if (!box) return; box.innerHTML = "";
+  const box = $("blanks"); if (!box) return; box.innerHTML = ""; setTimeout(() => applyFilter("bq", "#blanks .bk"), 0);
   const cnt = {}; t.blanks.forEach(b => { if (b.sid) cnt[b.sid] = (cnt[b.sid] || 0) + 1; });
   t.blanks.slice().reverse().forEach(b => {
-    const sc = scoreOf(t, b), el = document.createElement("div"); el.className = "bk";
+    const sc = scoreOf(t, b), el = document.createElement("div"); el.className = "bk"; el.dataset.fid = b.sid || ""; el.dataset.fnm = (b.sid && stName(g, b.sid)) || "aniqlanmagan";
     const cv = drawOverlay(t, b); cv.onclick = () => zoom(cv); el.appendChild(cv);
     let chip;
     if (b.sid && cnt[b.sid] > 1) chip = `<span class="chip bad">⚠ Bu o‘quvchi ${cnt[b.sid]} marta skanerlangan</span>`;
@@ -1538,8 +1553,8 @@ function tabResults(t, g) {
     <div class="kpi"><span>O‘rtacha</span><b>${a ?? "—"}%</b>${gbadge(a)}</div><div class="kpi"><span>Eng yuqori</span><b>${pcts.length ? Math.max(...pcts) : "—"}%</b></div><div class="kpi"><span>Eng past</span><b>${pcts.length ? Math.min(...pcts) : "—"}%</b></div></div>`;
   h += `<div class="card"><h2>Baholar taqsimoti</h2>${distHtml(pcts)}</div>`;
   h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Natijalar</h2><span class="btns">${expBtns("rx")}<button class="btn s" id="rCsv">${IC.csv} CSV</button><button class="btn s" id="rCopy">📋 Nusxa</button></span></div>
-    <div class="tscroll"><table><tr><th>#</th><th>ID</th><th>O‘quvchi</th><th class="num">To‘g‘ri</th><th class="num">Xato</th><th class="num">Bo‘sh</th><th class="num">%</th><th>Baho</th></tr>
-    ${rows.map((r, i) => `<tr ${r.b.sid ? `class="cl" data-s="${r.b.sid}"` : ""}><td>${i + 1}</td><td>${r.b.sid ? `<span class="idb">${r.b.sid}</span>` : ""}</td><td>${r.name ? esc(r.name) : `<span style="color:var(--warn)">aniqlanmagan</span>`}</td><td class="num"><b>${r.s.ok}</b></td><td class="num">${r.s.bad}</td><td class="num">${r.s.emp}</td><td class="num"><b>${r.s.pct ?? "—"}</b></td><td>${gbadge(r.s.pct)}</td></tr>`).join("")}</table></div>
+    <div class="search" style="margin:4px 0 8px">${IC.search}<input type="search" class="fq" data-k="rq" placeholder="ID yoki ism-familiya bo‘yicha qidirish" value="${esc(ui.rq || "")}" autocomplete="off"></div><div class="small mut fqn" style="margin:0 2px 6px"></div><div class="tscroll"><table><tr><th>#</th><th>ID</th><th>O‘quvchi</th><th class="num">To‘g‘ri</th><th class="num">Xato</th><th class="num">Bo‘sh</th><th class="num">%</th><th>Baho</th></tr>
+    ${rows.map((r, i) => `<tr data-fid="${r.b.sid || ""}" data-fnm="${esc(r.name || "aniqlanmagan")}" ${r.b.sid ? `class="cl" data-s="${r.b.sid}"` : ""}><td>${i + 1}</td><td>${r.b.sid ? `<span class="idb">${r.b.sid}</span>` : ""}</td><td>${r.name ? esc(r.name) : `<span style="color:var(--warn)">aniqlanmagan</span>`}</td><td class="num"><b>${r.s.ok}</b></td><td class="num">${r.s.bad}</td><td class="num">${r.s.emp}</td><td class="num"><b>${r.s.pct ?? "—"}</b></td><td>${gbadge(r.s.pct)}</td></tr>`).join("")}</table></div>
     ${missing.length ? `<div class="small mut" style="margin-top:10px"><b>Topshirmagan (${missing.length}):</b> ${missing.map(s => `${s.id} ${esc(s.name)}`).join(", ")}</div>` : ""}</div>`;
   h += `<div class="card"><h2>Savollar tahlili <small>(necha foiz to‘g‘ri topgan)</small></h2><div class="qstat">${Array.from({ length: t.cfg.N }, (_, i) => {
     if ((t.key[i] ?? -1) < 0) return `<div class="qs" style="background:var(--line2)"><b>${i + 1}</b><span class="mut">—</span></div>`;
@@ -1548,6 +1563,7 @@ function tabResults(t, g) {
     <div class="small mut" style="margin-top:10px">Qizil — ko‘pchilik xato qilgan savollar: mavzuni qayta tushuntirish kerak bo‘lishi mumkin.</div></div>`;
   $("view").innerHTML = h;
   $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${g.id}/${el.dataset.s}`));
+  bindFilter(t, "rq", "tr[data-fid]");
   const table = () => [["#", "ID", "Ism familiya", "To'g'ri", "Xato", "Bo'sh", "Jami", "Foiz", "Baho", ...Array.from({ length: t.cfg.N }, (_, i) => String(i + 1))], ["", "", "KALIT", "", "", "", "", "", "", ...t.key.map(letter)],
     ...rows.map((r, i) => [i + 1, r.b.sid || "", r.name || "aniqlanmagan", r.s.ok, r.s.bad, r.s.emp, r.s.tot, r.s.pct ?? "", grade(r.s.pct).g || "", ...r.s.a.map(letter)])];
   bindExp("rx", () => testReportSpec(t, g), `${safeName(t.cfg.title)}-natijalar`);
@@ -1643,10 +1659,10 @@ function tabKeyML(t) {
 }
 const ML_LETTERS = "ABCDEFGHIJ";
 function renderBlanksML(t, g) {
-  const box = $("blanks"); if (!box) return; box.innerHTML = "";
+  const box = $("blanks"); if (!box) return; box.innerHTML = ""; setTimeout(() => applyFilter("bq", "#blanks .bk"), 0);
   const cnt = {}; t.blanks.forEach(b => { if (b.sid) cnt[b.sid] = (cnt[b.sid] || 0) + 1; });
   t.blanks.slice().reverse().forEach(b => {
-    const sc = mlScore(t, b), el = document.createElement("div"); el.className = "bk";
+    const sc = mlScore(t, b), el = document.createElement("div"); el.className = "bk"; el.dataset.fid = b.sid || ""; el.dataset.fnm = ((b.sid && stName(g, b.sid)) || "aniqlanmagan") + (b.code ? " " + b.code : "");
     const cv = mlOverlay(t, b); cv.onclick = () => zoom(cv); cv.style.maxHeight = "420px"; cv.style.objectFit = "contain"; cv.style.background = "#f4f5fb"; el.appendChild(cv);
     let chip;
     if (b.sid && cnt[b.sid] > 1) chip = `<span class="chip bad">⚠ Bu o‘quvchi ${cnt[b.sid]} marta skanerlangan</span>`;
@@ -1681,8 +1697,8 @@ function tabResultsML(t, g) {
   h += `<div class="kpis"><div class="kpi"><span>Topshirdi</span><b>${t.blanks.length}${g.students.length ? `<span style="font-size:14px;color:var(--mut)"> / ${g.students.length}</span>` : ""}</b></div>
     <div class="kpi"><span>O‘rtacha</span><b>${a ?? "—"}%</b>${gbadge(a)}</div><div class="kpi"><span>🎧 Tinglash (o‘rtacha)</span><b>${aL}<span style="font-size:14px;color:var(--mut)"> / ${rows[0].s.L.tot}</span></b></div><div class="kpi"><span>📖 O‘qish (o‘rtacha)</span><b>${aR}<span style="font-size:14px;color:var(--mut)"> / ${rows[0].s.R.tot}</span></b></div></div>`;
   h += `<div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Natijalar</h2><span class="btns">${expBtns("rx")}<button class="btn s" id="rCsv">${IC.csv} CSV</button></span></div>
-    <div class="tscroll"><table><tr><th>#</th><th>ID</th><th>O‘quvchi</th><th class="num">Tinglash</th><th class="num">O‘qish</th><th class="num">Jami</th><th class="num">%</th><th>Baho</th></tr>
-    ${rows.map((r, i) => `<tr ${r.b.sid ? `class="cl" data-s="${r.b.sid}"` : ""}><td>${i + 1}</td><td>${r.b.sid ? `<span class="idb">${r.b.sid}</span>` : ""}</td><td>${r.name ? esc(r.name) : `<span style="color:var(--warn)">aniqlanmagan</span>`}${r.s.pend ? ` <span class="small" style="color:var(--warn)">✍️${r.s.pend}</span>` : ""}</td><td class="num">${r.s.L.ok}/${r.s.L.tot}</td><td class="num">${r.s.R.ok}/${r.s.R.tot}</td><td class="num"><b>${r.s.ok}</b>/${r.s.tot}</td><td class="num"><b>${r.s.pct ?? "—"}</b></td><td>${gbadge(r.s.pct)}</td></tr>`).join("")}</table></div>
+    <div class="search" style="margin:4px 0 8px">${IC.search}<input type="search" class="fq" data-k="rq" placeholder="ID yoki ism-familiya bo‘yicha qidirish" value="${esc(ui.rq || "")}" autocomplete="off"></div><div class="small mut fqn" style="margin:0 2px 6px"></div><div class="tscroll"><table><tr><th>#</th><th>ID</th><th>O‘quvchi</th><th class="num">Tinglash</th><th class="num">O‘qish</th><th class="num">Jami</th><th class="num">%</th><th>Baho</th></tr>
+    ${rows.map((r, i) => `<tr data-fid="${r.b.sid || ""}" data-fnm="${esc(r.name || "aniqlanmagan")}" ${r.b.sid ? `class="cl" data-s="${r.b.sid}"` : ""}><td>${i + 1}</td><td>${r.b.sid ? `<span class="idb">${r.b.sid}</span>` : ""}</td><td>${r.name ? esc(r.name) : `<span style="color:var(--warn)">aniqlanmagan</span>`}${r.s.pend ? ` <span class="small" style="color:var(--warn)">✍️${r.s.pend}</span>` : ""}</td><td class="num">${r.s.L.ok}/${r.s.L.tot}</td><td class="num">${r.s.R.ok}/${r.s.R.tot}</td><td class="num"><b>${r.s.ok}</b>/${r.s.tot}</td><td class="num"><b>${r.s.pct ?? "—"}</b></td><td>${gbadge(r.s.pct)}</td></tr>`).join("")}</table></div>
     ${missing.length ? `<div class="small mut" style="margin-top:10px"><b>Topshirmagan (${missing.length}):</b> ${missing.map(s => `${s.id} ${esc(s.name)}`).join(", ")}</div>` : ""}</div>`;
   const qs = s => ML_ITEMS.filter(it => it.s === s).map(it => {
     let p = null, lab = `${it.q}`;
@@ -1693,6 +1709,7 @@ function tabResultsML(t, g) {
   h += `<div class="card"><h2>Savollar tahlili <small>(necha foiz to‘g‘ri topgan)</small></h2><div class="small mut" style="margin:4px 0 6px">🎧 Tinglash</div><div class="qstat">${qs("L")}</div><div class="small mut" style="margin:12px 0 6px">📖 O‘qish</div><div class="qstat">${qs("R")}</div></div>`;
   $("view").innerHTML = h;
   $("view").querySelectorAll("[data-s]").forEach(el => el.onclick = () => go(`#s/${g.id}/${el.dataset.s}`));
+  bindFilter(t, "rq", "tr[data-fid]");
   bindExp("rx", () => testReportSpec(t, g), `${safeName(t.cfg.title)}-natijalar`);
   $("rCsv").onclick = () => {
     const head = ["#", "ID", "Ism familiya", "Tinglash", "O'qish", "Jami", "Maks", "Foiz", "Baho", "Maxsus kod", ...ML_ITEMS.map(it => it.s + it.q)];
