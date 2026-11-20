@@ -1297,8 +1297,7 @@ function matrixSpec(g) {
   return {
     landscape: true, title: `${g.name} — ballar jadvali`, sub: `${g.students.length} o‘quvchi · ${ts.length} test${cut ? " (oxirgi " + MAXC + " tasi)" : ""}`,
     table: { title: "", cols, rows: rows.map(r => [r.s.id, r.s.name, ...r.cells.map(c => c && c.pct != null ? { t: `${c.ok}/${c.tot}`, c: GCOL[grade(c.pct).g], b: 1 } : { t: "—", c: "#a5adbd" }), { t: r.n ? `${r.ok}/${r.tot}` : "—", b: 1 }, { t: r.avg != null ? r.avg + "%" : "—", b: 1, c: r.avg != null ? GCOL[grade(r.avg).g] : "#a5adbd" }]) },
-    notes: ts.map((t, i) => `${i + 1}-test: ${t.cfg.title} (${fmtDate(t.date)})${isML(t) ? " — Multilevel" : ""}`),
-    note: "Rang: yashil — 5, ko‘k — 4, sariq — 3, qizil — 2 (86/71/56% chegaralari)."
+    notes: ts.map((t, i) => `${i + 1}-test: ${t.cfg.title} (${fmtDate(t.date)})${isML(t) ? " — Multilevel" : ""}`)
   };
 }
 function matrixCsv(g) {
